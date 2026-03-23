@@ -14,12 +14,9 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.securitiestransferchargesubmissions.config
+package uk.gov.hmrc.securitiestransferchargesubmissions.domain
 
-import javax.inject.{Inject, Singleton}
-import play.api.Configuration
+import scala.concurrent.Future
 
-@Singleton
-class AppConfig @Inject()(config: Configuration):
-
-  val appName: String = config.get[String]("appName")
+class EtmpService:
+  def createTransfer(data: EtmpTransferData): Future[Either[String, String]] = ???

@@ -14,12 +14,9 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.securitiestransferchargesubmissions.config
+package uk.gov.hmrc.securitiestransferchargesubmissions.domain.models.etmp
 
-import javax.inject.{Inject, Singleton}
-import play.api.Configuration
-
-@Singleton
-class AppConfig @Inject()(config: Configuration):
-
-  val appName: String = config.get[String]("appName")
+enum MessageType(val value: String):
+  case Create extends MessageType("STCTransactionsCreate")
+  case Amend extends MessageType("STCTransactionsAmend")
+  case View extends MessageType("STCTransactionsView")

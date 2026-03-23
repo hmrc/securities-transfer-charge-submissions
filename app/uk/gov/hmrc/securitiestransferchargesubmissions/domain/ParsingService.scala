@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.securitiestransferchargesubmissions.config
+package uk.gov.hmrc.securitiestransferchargesubmissions.domain
 
-import javax.inject.{Inject, Singleton}
-import play.api.Configuration
+import uk.gov.hmrc.securitiestransferchargesubmissions.domain.models.TransferData
 
-@Singleton
-class AppConfig @Inject()(config: Configuration):
+type EtmpTransferData
 
-  val appName: String = config.get[String]("appName")
+trait ParsingService:
+  def parseSingle(json: TransferData): Either[String, EtmpTransferData]

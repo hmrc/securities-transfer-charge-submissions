@@ -14,12 +14,16 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.securitiestransferchargesubmissions.config
+package uk.gov.hmrc.securitiestransferchargesubmissions.domain.models
 
-import javax.inject.{Inject, Singleton}
-import play.api.Configuration
+import play.api.libs.json.{JsObject, JsValue, Reads}
+import uk.gov.hmrc.auth.core.AffinityGroup
+import uk.gov.hmrc.securitiestransferchargesubmissions.domain.models.etmp.TransactionType
 
-@Singleton
-class AppConfig @Inject()(config: Configuration):
+case class TransferData(subscriptionId: String,
+                        submissionId: String,
+                        transferType: TransactionType,
+                        senderAffinity: AffinityGroup,
+                        transferAnswers: JsObject):
+  def getTransferAnswer[A: Reads](k: PageKey): Option[A] = (transferAnswers \ k.key).asOpt[A]
 
-  val appName: String = config.get[String]("appName")
