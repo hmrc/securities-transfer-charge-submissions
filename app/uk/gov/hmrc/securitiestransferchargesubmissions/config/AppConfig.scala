@@ -49,3 +49,12 @@ class AppConfig @Inject()(config: Configuration):
   val etmpCreateMaxRecordsPerRequest: Int = config
     .getOptional[Int]("microservice.services.etmp-transaction.create.max-records-per-request")
     .getOrElse(12)
+
+  require(
+    etmpCreateMaxRecordsPerRequest > 0,
+    "microservice.services.etmp-transaction.create.max-records-per-request must be > 0"
+  )
+
+  val etmpCreateMaxConcurrentCalls: Int = config
+    .getOptional[Int]("microservice.services.etmp-transaction.create.max-concurrent-calls")
+    .getOrElse(3)

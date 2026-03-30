@@ -17,6 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.SubmissionClient
+import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.http.HeaderCarrier
 
 import javax.inject.{Inject, Singleton}
@@ -32,7 +33,8 @@ trait SubmissionConnector:
 @Singleton
 class SubmissionConnectorImpl @Inject()(
   client: SubmissionClient,
-  transformer: SubmissionTransformer
+  transformer: SubmissionTransformer,
+  appConfig: AppConfig
 )(using ec: ExecutionContext) extends SubmissionConnector:
 
   override def submitTransfers(
@@ -40,11 +42,22 @@ class SubmissionConnectorImpl @Inject()(
     correlationId: String,
     transfers: Seq[StcTransactionCreateSingleRecordRequest]
   )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
-    val batchedRequests = transformer.toRequests(transfers)
-    Future
-      .sequence(batchedRequests.map { case (batch, request) =>
-        client
-          .submitTransfer(stcId, correlationId, request)
-          .map(response => transformer.toSingleRecordResponses(batch, response))
-      })
+    require(transfers.nonEmpty, "transfers must not be empty")
+
+    val requests = transformer.toRequests(transfers)
+    val maxConcurrentCalls = math.max(1, appConfig.etmpCreateMaxConcurrentCalls)
+
+    requests
+      .grouped(maxConcurrentCalls)
+      .foldLeft(Future.successful(Seq.empty[Seq[StcTransactionCreateSingleRecordResponse]])) {
+        (accResponsesF, requestChunk) =>
+          for {
+            accResponses <- accResponsesF
+            chunkResponses <- Future.sequence(requestChunk.map { request =>
+              client
+                .submitTransfer(stcId, correlationId, request)
+                .map(response => transformer.toSingleRecordResponses(request, response))
+            })
+          } yield accResponses ++ chunkResponses
+      }
       .map(_.flatten)
