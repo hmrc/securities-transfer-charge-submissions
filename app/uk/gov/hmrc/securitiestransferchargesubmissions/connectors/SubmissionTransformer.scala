@@ -18,6 +18,7 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.controllers.TransferData
 
 import javax.inject.{Inject, Singleton}
 
@@ -63,6 +64,12 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig):
         batch.map(r => StcChargeFailure(r.recordId, error.code, error.message))
       case StcTransactionCreateBusinessError(errors) =>
         batch.map(r => StcChargeFailure(r.recordId, errors.code, errors.text))
+
+  /**
+   * Converts a single [[TransferData]] into a [[StcTransactionCreateSingleRecordRequest]].
+   * TODO: implement field mapping from TransferData to the ETMP request model.
+   */
+  def toSingleRecordRequest(data: TransferData): StcTransactionCreateSingleRecordRequest = ???
 
   // ---------------------------------------------------------------------------
   // Private helpers

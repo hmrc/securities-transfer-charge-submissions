@@ -1,3 +1,4 @@
 # microservice specific routes
 
-GET        /hello-world             uk.gov.hmrc.securitiestransferchargesubmissions.controllers.MicroserviceHelloWorldController.hello
+POST    /submission/single      uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionControllerImpl.submitSingleTransfer
+POST    /submission/multiple    uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionControllerImpl.submitMultipleTransfers

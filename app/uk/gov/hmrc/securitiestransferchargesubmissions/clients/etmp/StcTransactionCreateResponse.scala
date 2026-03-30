@@ -16,7 +16,7 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
-import play.api.libs.json.{JsDefined, JsError, JsSuccess, Json, Reads}
+import play.api.libs.json.{JsDefined, JsError, JsSuccess, Json, Reads, Writes}
 import uk.gov.hmrc.http.{HttpResponse, UpstreamErrorResponse}
 
 sealed trait StcTransactionCreateResponse
@@ -87,6 +87,13 @@ object StcTransactionCreateResponse:
 
   given Reads[StcTransactionCreateBusinessErrorBody] = Json.reads[StcTransactionCreateBusinessErrorBody]
   given Reads[StcTransactionCreateBusinessError] = Json.reads[StcTransactionCreateBusinessError]
+
+  given Writes[StcChargeSuccess] = Json.writes[StcChargeSuccess]
+  given Writes[StcChargeFailure] = Json.writes[StcChargeFailure]
+  given Writes[StcCharge] = Writes {
+    case s: StcChargeSuccess => Json.toJson(s)
+    case f: StcChargeFailure => Json.toJson(f)
+  }
 
   def fromHttpResponse(response: HttpResponse): StcTransactionCreateResponse =
     response.status match
