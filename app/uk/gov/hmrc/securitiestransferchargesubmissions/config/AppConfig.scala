@@ -45,3 +45,7 @@ class AppConfig @Inject()(config: Configuration):
     config.getOptional[Long]("microservice.services.etmp-transaction.create.initial-backoff-ms").getOrElse(200L),
     MILLISECONDS
   )
+
+  val etmpCreateMaxRecordsPerRequest: Int = config
+    .getOptional[Int]("microservice.services.etmp-transaction.create.max-records-per-request")
+    .getOrElse(12)
