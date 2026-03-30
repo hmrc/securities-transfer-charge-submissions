@@ -1,4 +1,3 @@
-
 # Glossary
 
 | Term           | Definition                                                                                                                                                                                      |
@@ -14,6 +13,24 @@ This service deals with transfer details.
 Transfer details can be collected from the UI forms and submitted singly (Enter transfer details) or as rows on a spreadsheet (Upload bulk transfer).
 
 After submission, transfer details can be viewed and amended if required, although not all fields are amendable.
+
+## ETMP create client
+
+This service now contains a Play HTTP client for the ETMP create endpoint:
+
+- client trait: `app/uk/gov/hmrc/securitiestransferchargesubmissions/clients/etmp/SubmissionClient.scala`
+- request models: `app/uk/gov/hmrc/securitiestransferchargesubmissions/clients/etmp/StcTransactionCreateRequest.scala`
+- response models: `app/uk/gov/hmrc/securitiestransferchargesubmissions/clients/etmp/StcTransactionCreateResponse.scala`
+
+### Required config
+
+Set ETMP endpoint details under:
+
+- `microservice.services.etmp-transaction.host`
+- `microservice.services.etmp-transaction.port`
+- `microservice.services.etmp-transaction.protocol` (default `http`)
+- `microservice.services.etmp-transaction.originating-system` (default `MDTP-STC`)
+- `microservice.services.etmp-transaction.transmitting-system` (default `HIP`)
 
 ### License
 
