@@ -19,6 +19,8 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.config
 import javax.inject.{Inject, Singleton}
 import play.api.Configuration
 
+import scala.concurrent.duration.{FiniteDuration, MILLISECONDS}
+
 @Singleton
 class AppConfig @Inject()(config: Configuration):
 
@@ -35,3 +37,11 @@ class AppConfig @Inject()(config: Configuration):
   val etmpTransmittingSystem: String = config
     .getOptional[String]("microservice.services.etmp-transaction.transmitting-system")
     .getOrElse("HIP")
+  val etmpCreateMaxRetries: Int = config
+    .getOptional[Int]("microservice.services.etmp-transaction.create.max-retries")
+    .getOrElse(0)
+
+  val etmpCreateInitialBackoff: FiniteDuration = FiniteDuration(
+    config.getOptional[Long]("microservice.services.etmp-transaction.create.initial-backoff-ms").getOrElse(200L),
+    MILLISECONDS
+  )

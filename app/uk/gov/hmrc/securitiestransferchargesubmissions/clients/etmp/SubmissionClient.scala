@@ -16,6 +16,8 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.pattern.after
 import play.api.libs.json.Json
 import play.api.libs.ws.JsonBodyWritables.writeableOf_JsValue
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
@@ -25,6 +27,7 @@ import uk.gov.hmrc.http.{HeaderCarrier, HttpReads, HttpResponse, StringContextOp
 import java.time.format.DateTimeFormatter
 import java.time.{Clock, Instant}
 import javax.inject.{Inject, Singleton}
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
 trait SubmissionClient:
@@ -36,7 +39,8 @@ trait SubmissionClient:
 class SubmissionClientImpl @Inject() (
   httpClientV2: HttpClientV2,
   appConfig: AppConfig,
-  clock: Clock
+  clock: Clock,
+  actorSystem: ActorSystem
 )(using ec: ExecutionContext)
     extends SubmissionClient:
 
@@ -47,6 +51,33 @@ class SubmissionClientImpl @Inject() (
   ): Future[StcTransactionCreateResponse] =
     val receiptDate = dateTimeFormatter.format(Instant.now(clock))
 
+    submitTransferWithRetry(stcId, correlationId, request, receiptDate, retryAttempt = 0)
+      .map(StcTransactionCreateResponse.fromHttpResponse)
+
+  private def submitTransferWithRetry(
+    stcId: String,
+    correlationId: String,
+    request: StcTransactionCreateRequest,
+    receiptDate: String,
+    retryAttempt: Int
+  )(using hc: HeaderCarrier): Future[HttpResponse] =
+    doSubmitTransfer(stcId, correlationId, request, receiptDate).flatMap { response =>
+      if (isRetriable5xx(response.status) && retryAttempt < appConfig.etmpCreateMaxRetries) {
+        val nextDelay = backoffDelayForAttempt(retryAttempt)
+        after(nextDelay, actorSystem.scheduler)(
+          submitTransferWithRetry(stcId, correlationId, request, receiptDate, retryAttempt + 1)
+        )
+      } else {
+        Future.successful(response)
+      }
+    }
+
+  private def doSubmitTransfer(
+    stcId: String,
+    correlationId: String,
+    request: StcTransactionCreateRequest,
+    receiptDate: String
+  )(using hc: HeaderCarrier): Future[HttpResponse] =
     httpClientV2
       .post(url"${appConfig.etmpTransactionBaseUrl}/RESTAdapter/stc/transaction/$stcId")
       .setHeader(
@@ -57,4 +88,8 @@ class SubmissionClientImpl @Inject() (
       )
       .withBody(Json.toJson(request))
       .execute[HttpResponse](using HttpReads.Implicits.readRaw)
-      .map(StcTransactionCreateResponse.fromHttpResponse)
+
+  private def isRetriable5xx(status: Int): Boolean = status >= 500 && status <= 599
+
+  private def backoffDelayForAttempt(retryAttempt: Int): FiniteDuration =
+    appConfig.etmpCreateInitialBackoff * math.pow(2d, retryAttempt.toDouble).toLong
