@@ -18,105 +18,72 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
 
 import play.api.libs.json.*
 import play.api.mvc.*
-import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{StcTransactionCreateSingleRecordRequest, StcTransactionCreateSingleRecordResponse, SubmissionConnector, SubmissionTransformer}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
+import uk.gov.hmrc.securitiestransferchargesubmissions.services.{ErrorMessages, SubmissionOutcome, SubmissionService}
 
-import java.util.UUID
 import javax.inject.{Inject, Singleton}
-import scala.util.Try
 import scala.concurrent.{ExecutionContext, Future}
 
-trait SubmissionController:
-  def submitSingleTransfer(data: TransferData)(using HeaderCarrier: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]]
-  def submitMultipleTransfers(data: Seq[TransferData])(using HeaderCarrier: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]]
-
 @Singleton
-class SubmissionControllerImpl @Inject()(
+class SubmissionController @Inject()(
   cc: ControllerComponents,
-  connector: SubmissionConnector,
-  transformer: SubmissionTransformer
-)(using ec: ExecutionContext) extends BackendController(cc) with SubmissionController:
+  submissionService: SubmissionService
+)(using ec: ExecutionContext) extends BackendController(cc):
 
-  private case class TransformationError(recordId: Int, error: String)
-  private object TransformationError:
-    given OWrites[TransformationError] = Json.writes[TransformationError]
-
-  private case class BatchTransformationException(errors: Seq[TransformationError])
-      extends RuntimeException("invalid transfer data")
 
   // Play action endpoints — these are the methods referenced by the routes file.
   // JSON is parsed from the request body, a HeaderCarrier is derived from the
   // request headers, and the result is returned as a JSON array of charges.
 
-  def submitSingleTransfer: Action[JsValue] = Action.async(parse.json) { implicit request =>
+  def submitSingleTransferAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
     request.body.validate[TransferData] match
       case JsSuccess(data, _) =>
-        submitSingleTransfer(data)
-          .map(charges => Ok(Json.toJson(charges)))
+        submissionService
+          .submitSingleTransfer(data)
+          .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsError(errors) =>
-        Future.successful(BadRequest(Json.obj("errors" -> JsError.toJson(errors))))
+        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(
+          error = ErrorMessages.InvalidTransferData,
+          details = Some(JsError.toJson(errors))
+        ))))
   }
 
-  def submitMultipleTransfers: Action[JsValue] = Action.async(parse.json) { implicit request =>
+  def submitMultipleTransfersAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
     request.body.validate[Seq[TransferData]] match
       case JsSuccess(data, _) if data.nonEmpty =>
-        submitMultipleTransfers(data)
-          .map(charges => Ok(Json.toJson(charges)))
+        submissionService
+          .submitMultipleTransfers(data)
+          .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsSuccess(_, _) =>
-        Future.successful(BadRequest(Json.obj("error" -> "at least one transfer must be provided")))
+        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(ErrorMessages.EmptyTransferBatch))))
       case JsError(errors) =>
-        Future.successful(BadRequest(Json.obj("errors" -> JsError.toJson(errors))))
+        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(
+          error = ErrorMessages.InvalidTransferData,
+          details = Some(JsError.toJson(errors))
+        ))))
   }
 
-  // SubmissionController trait implementations
-
-  override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
-    Future
-      .fromTry(Try(transformer.toSingleRecordRequest(recordId = 1, data)))
-      .flatMap(request => connector.submitTransfers(data.subscriptionId, correlationId, Seq(request)))
-
-  override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
-    require(data.nonEmpty, "data must not be empty")
-
-    val (errors, requests) =
-      data.zipWithIndex.foldLeft((Vector.empty[TransformationError], Vector.empty[StcTransactionCreateSingleRecordRequest])) {
-        case ((errs, reqs), (transferData, idx)) =>
-          val recordId = idx + 1
-          Try(transformer.toSingleRecordRequest(recordId = recordId, transferData)).fold(
-            e => (errs :+ TransformationError(recordId, Option(e.getMessage).getOrElse(e.getClass.getSimpleName)), reqs),
-            req => (errs, reqs :+ req)
-          )
-      }
-
-    if errors.nonEmpty then
-      Future.failed(BatchTransformationException(errors))
-    else
-      connector.submitTransfers(
-        stcId         = data.head.subscriptionId,
-        correlationId = correlationId,
-        transfers     = requests
-      )
-
-  private def correlationId: String = UUID.randomUUID().toString
+  private def toHttpResult(outcome: SubmissionOutcome): Result =
+    outcome match
+      case SubmissionOutcome.Submitted(responses) =>
+        Ok(Json.toJson(responses))
+      case SubmissionOutcome.TransformationFailed(errors) =>
+        BadRequest(Json.toJson(ApiErrorResponse(
+          error = ErrorMessages.InvalidTransferData,
+          details = Some(Json.toJson(errors))
+        )))
 
   private def handleClientMappingErrors: PartialFunction[Throwable, Result] =
-    case BatchTransformationException(errors) =>
-      BadRequest(
-        Json.obj(
-          "error" -> "invalid transfer data",
-          "details" -> Json.toJson(errors)
-        )
-      )
     case e: JsResultException =>
-      BadRequest(
-        Json.obj(
-          "error" -> "invalid transfer data",
-          "details" -> JsError.toJson(e.errors)
-        )
-      )
+      BadRequest(Json.toJson(ApiErrorResponse(
+        error = ErrorMessages.InvalidTransferData,
+        details = Some(JsError.toJson(e.errors))
+      )))
     case e: IllegalArgumentException =>
-      BadRequest(Json.obj("error" -> e.getMessage))
+      BadRequest(Json.toJson(ApiErrorResponse(e.getMessage)))

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
+package uk.gov.hmrc.securitiestransferchargesubmissions.models
 
 import play.api.libs.json.*
 import uk.gov.hmrc.auth.core.AffinityGroup

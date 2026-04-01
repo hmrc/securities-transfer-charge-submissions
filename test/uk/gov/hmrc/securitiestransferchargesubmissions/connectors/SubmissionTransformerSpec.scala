@@ -23,7 +23,7 @@ import play.api.libs.json.{JsNull, JsObject, JsResultException, Json}
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.controllers.{TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransferType}
 
 import java.time.LocalDate
 
@@ -43,6 +43,20 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
   private val transformer = new SubmissionTransformer(appConfig)
 
+  private val appConfigMax3 = new AppConfig(
+    Configuration.from(
+      Map(
+        "appName" -> "test",
+        "microservice.services.etmp-transaction.host" -> "localhost",
+        "microservice.services.etmp-transaction.port" -> 123,
+        "microservice.services.etmp-transaction.create.max-records-per-request" -> 3,
+        "microservice.services.etmp-transaction.create.max-concurrent-calls" -> 3
+      )
+    )
+  )
+
+  private val transformerMax3 = new SubmissionTransformer(appConfigMax3)
+
   private def transferData(
     affinity: AffinityGroup,
     data: JsObject
@@ -53,6 +67,50 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       submissionId = "submission-123",
       submitterAffinity = affinity,
       data = data
+    )
+
+  private def transferDataWithType(
+    affinity: AffinityGroup,
+    transferType: TransferType,
+    data: JsObject
+  ): TransferData =
+    TransferData(
+      transferType = transferType,
+      subscriptionId = "sub-123",
+      submissionId = "submission-123",
+      submitterAffinity = affinity,
+      data = data
+    )
+
+  private def singleRecordRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
+    StcTransactionCreateSingleRecordRequest(
+      recordId = recordId,
+      submissionId = "submission-123",
+      transactionDetails = TransactionDetailsCreateSingleRecord(
+        transactionType = 1,
+        reasonForPurchase = None,
+        descriptionOfSecurity = s"security-$recordId",
+        numberOfShares = 1,
+        nominalValue = None,
+        marketValue = None,
+        qualifyAsTreasuryShares = None,
+        maxPricePaid = None,
+        minPricePaid = None,
+        originalChargingPoint = LocalDate.parse("2026-03-30"),
+        considerationActual = BigDecimal(100),
+        isConnectedPartiesTransactions = "N",
+        companyName = "company",
+        companyRegistrationNumber = None,
+        reliefClaimedName = None,
+        reliefPercentage = None
+      ),
+      contingentDetails = None,
+      mainSellerDetails = SellerDetailsCreateSingleRecord("seller", "addr1", None, None, None, "AA11AA", "GB"),
+      otherSellers = None,
+      mainBuyerDetails = BuyerDetailsCreateSingleRecord("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, 1, None),
+      otherBuyers = None,
+      agentDetails = None,
+      declaration = DeclarationCreateSingleRecord(None, None, "declarer", "addr1", None, None, None, "AA11AA", "GB", None, "Y")
     )
 
   private val baseSellerAddress = Json.obj(
@@ -201,6 +259,54 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         StcChargeFailure(2, "INTERNAL_SERVER_ERROR", "ETMP did not return a processed response for this record")
       )
 
+    "map a bad-request response to one failure per input record" in:
+      val request = requestWithRecordIds(1, 2)
+      val response = StcTransactionCreateBadRequest(
+        StcTransactionCreateBadRequestBody("400", "Bad request", "log-id")
+      )
+
+      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+        StcChargeFailure(1, "400", "Bad request"),
+        StcChargeFailure(2, "400", "Bad request")
+      )
+
+    "map a business-error response to one failure per input record" in:
+      val request = requestWithRecordIds(1, 2)
+      val response = StcTransactionCreateBusinessError(
+        StcTransactionCreateBusinessErrorBody("2026-03-30T12:00:00Z", "037", "Main Buyer Details Invalid")
+      )
+
+      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+        StcChargeFailure(1, "037", "Main Buyer Details Invalid"),
+        StcChargeFailure(2, "037", "Main Buyer Details Invalid")
+      )
+
+  "SubmissionTransformer.toRequests" should:
+    "return one request when given one single-record request" in:
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1)))
+
+      result.size shouldBe 1
+      result.head.transactionDetails.map(_.recordId) shouldBe Seq(1)
+      result.head.mainSellerDetails.map(_.recordId) shouldBe Seq(1)
+      result.head.mainBuyerDetails.map(_.recordId) shouldBe Seq(1)
+      result.head.declaration.map(_.recordId) shouldBe Seq(1)
+
+    "return one request for n singles where n is less than or equal to max records per request" in:
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2), singleRecordRequest(3)))
+
+      result.size shouldBe 1
+      result.head.transactionDetails.map(_.recordId) shouldBe Seq(1, 2, 3)
+
+    "return multiple requests for m singles where m is greater than max records per request" in:
+      val result = transformerMax3.toRequests((1 to 8).map(singleRecordRequest))
+
+      result.size shouldBe 3
+      result.map(_.transactionDetails.map(_.recordId)) shouldBe Seq(
+        Seq(1, 2, 3),
+        Seq(4, 5, 6),
+        Seq(7, 8)
+      )
+
   "SubmissionTransformer.toSingleRecordRequest" should:
     "map a shares journey using DetailsOfThisTransfer and buyerAddress" in:
       val data = transferData(
@@ -300,3 +406,65 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
       val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(recordId = 10, data)
       thrown.getMessage should include("buyerAddress or confirmedAddress")
+
+    "set reliefClaimedName when applyingForRelief is true and a relief is provided" in:
+      val data = transferData(
+        affinity = AffinityGroup.Organisation,
+        data = commonPages ++ Json.obj(
+          "buyerAddress" -> baseBuyerAlfAddress,
+          "applyingForRelief" -> true,
+          "whatReliefAreYouApplyingFor" -> "groupRelief",
+          "whatTypeOfSecurities" -> "shares",
+          "detailsOfThisTransfer" -> Json.obj(
+            "numberOfShares" -> "5",
+            "typeOfShares" -> "Ordinary",
+            "amountPaid" -> BigDecimal(500),
+            "marketValue" -> JsNull
+          )
+        )
+      )
+
+      val result = transformer.toSingleRecordRequest(recordId = 12, data)
+      result.transactionDetails.reliefClaimedName shouldBe Some("groupRelief")
+
+    "map TransferType.SH03 and TransferType.Other to transaction types 2 and 3" in:
+      val baseData = commonPages ++ Json.obj(
+        "buyerAddress" -> baseBuyerAlfAddress,
+        "whatTypeOfSecurities" -> "shares",
+        "detailsOfThisTransfer" -> Json.obj(
+          "numberOfShares" -> "1",
+          "typeOfShares" -> "Ordinary",
+          "amountPaid" -> BigDecimal(1),
+          "marketValue" -> JsNull
+        )
+      )
+
+      val sh03 = transformer.toSingleRecordRequest(
+        recordId = 13,
+        data = transferDataWithType(AffinityGroup.Organisation, TransferType.SH03, baseData)
+      )
+      val other = transformer.toSingleRecordRequest(
+        recordId = 14,
+        data = transferDataWithType(AffinityGroup.Organisation, TransferType.Other, baseData)
+      )
+
+      sh03.transactionDetails.transactionType shouldBe 2
+      other.transactionDetails.transactionType shouldBe 3
+
+    "throw an IllegalArgumentException when numberOfShares is not an integer" in:
+      val data = transferData(
+        affinity = AffinityGroup.Organisation,
+        data = commonPages ++ Json.obj(
+          "buyerAddress" -> baseBuyerAlfAddress,
+          "whatTypeOfSecurities" -> "shares",
+          "detailsOfThisTransfer" -> Json.obj(
+            "numberOfShares" -> "abc",
+            "typeOfShares" -> "Ordinary",
+            "amountPaid" -> BigDecimal(100),
+            "marketValue" -> JsNull
+          )
+        )
+      )
+
+      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(recordId = 15, data)
+      thrown.getMessage should include("Unable to parse numberOfShares")

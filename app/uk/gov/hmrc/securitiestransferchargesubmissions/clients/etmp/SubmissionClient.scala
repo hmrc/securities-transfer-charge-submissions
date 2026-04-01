@@ -46,8 +46,9 @@ class SubmissionClientImpl @Inject() (
 
   private val dateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 
-  override def submitTransfer(stcId: String, correlationId: String, request: StcTransactionCreateRequest)(using
-    hc: HeaderCarrier
+  override def submitTransfer(
+    stcId: String, correlationId: String, request: StcTransactionCreateRequest)(
+    using hc: HeaderCarrier
   ): Future[StcTransactionCreateResponse] =
     val receiptDate = dateTimeFormatter.format(Instant.now(clock))
 
@@ -89,7 +90,7 @@ class SubmissionClientImpl @Inject() (
       .withBody(Json.toJson(request))
       .execute[HttpResponse](using HttpReads.Implicits.readRaw)
 
-  private def isRetriable5xx(status: Int): Boolean = status >= 500 && status <= 599
+  private def isRetriable5xx(status: Int): Boolean = status / 100 == 5
 
   private def backoffDelayForAttempt(retryAttempt: Int): FiniteDuration =
     appConfig.etmpCreateInitialBackoff * math.pow(2d, retryAttempt.toDouble).toLong

@@ -1,4 +1,4 @@
 # microservice specific routes
 
-POST    /submission/single      uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionControllerImpl.submitSingleTransfer
-POST    /submission/multiple    uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionControllerImpl.submitMultipleTransfers
+POST    /submission/single      uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionController.submitSingleTransferAction
+POST    /submission/multiple    uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionController.submitMultipleTransfersAction

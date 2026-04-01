@@ -17,6 +17,8 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.SubmissionClient
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateRequest
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.http.HeaderCarrier
 
@@ -24,6 +26,16 @@ import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait SubmissionConnector:
+  /**
+   * Submits already-transformed records to ETMP.
+   *
+   * Contract:
+   *   - Input `transfers` is expected to be non-empty and already validated/transformed.
+   *   - Returns exactly one single-record response per input transfer.
+   *   - For downstream submission failures, synthetic [[StcChargeFailure]] responses are produced so
+   *     the one-response-per-input invariant is preserved.
+   *   - Response ordering is not guaranteed; callers should correlate by `recordId`.
+   */
   def submitTransfers(
     stcId: String,
     correlationId: String,
@@ -37,6 +49,12 @@ class SubmissionConnectorImpl @Inject()(
   appConfig: AppConfig
 )(using ec: ExecutionContext) extends SubmissionConnector:
 
+  private type SingleRecordResponses = Seq[StcTransactionCreateSingleRecordResponse]
+  private type ChunkResponses = Seq[SingleRecordResponses]
+
+  private val FailedSubmissionErrorCode = "500"
+  private val FailedSubmissionErrorText = "Failed to submit transfer to ETMP"
+
   override def submitTransfers(
     stcId: String,
     correlationId: String,
@@ -45,19 +63,56 @@ class SubmissionConnectorImpl @Inject()(
     require(transfers.nonEmpty, "transfers must not be empty")
 
     val requests = transformer.toRequests(transfers)
-    val maxConcurrentCalls = math.max(1, appConfig.etmpCreateMaxConcurrentCalls)
+    val requestChunks = requests.grouped(maxConcurrentCalls).toSeq
 
-    requests
-      .grouped(maxConcurrentCalls)
-      .foldLeft(Future.successful(Seq.empty[Seq[StcTransactionCreateSingleRecordResponse]])) {
-        (accResponsesF, requestChunk) =>
-          for {
-            accResponses <- accResponsesF
-            chunkResponses <- Future.sequence(requestChunk.map { request =>
-              client
-                .submitTransfer(stcId, correlationId, request)
-                .map(response => transformer.toSingleRecordResponses(request, response))
-            })
-          } yield accResponses ++ chunkResponses
-      }
+    submitChunks(stcId, correlationId, requestChunks)
       .map(_.flatten)
+
+  private def maxConcurrentCalls: Int =
+    math.max(1, appConfig.etmpCreateMaxConcurrentCalls)
+
+  private def submitChunks(
+    stcId: String,
+    correlationId: String,
+    requestChunks: Seq[Seq[StcTransactionCreateRequest]]
+  )(using hc: HeaderCarrier): Future[ChunkResponses] =
+    requestChunks.foldLeft(Future.successful(Seq.empty[SingleRecordResponses])) {
+      (accResponsesF, requestChunk) =>
+        for {
+          accResponses <- accResponsesF
+          chunkResponses <- submitChunk(stcId, correlationId, requestChunk)
+        } yield accResponses ++ chunkResponses
+    }
+
+  private def submitChunk(
+    stcId: String,
+    correlationId: String,
+    requestChunk: Seq[StcTransactionCreateRequest]
+  )(using hc: HeaderCarrier): Future[ChunkResponses] =
+    Future.sequence(requestChunk.map(submitSingleBatch(stcId, correlationId, _)))
+
+  private def submitSingleBatch(
+    stcId: String,
+    correlationId: String,
+    request: StcTransactionCreateRequest
+  )(using hc: HeaderCarrier): Future[SingleRecordResponses] =
+    client
+      .submitTransfer(stcId, correlationId, request)
+      .map(response => transformer.toSingleRecordResponses(request, response))
+      .recover(recoverSubmissionFailure(request))
+
+  private def recoverSubmissionFailure(
+    request: StcTransactionCreateRequest
+  ): PartialFunction[Throwable, SingleRecordResponses] =
+    case _ => failedResponsesFor(request)
+
+  private def failedResponsesFor(
+    request: StcTransactionCreateRequest
+  ): SingleRecordResponses =
+    request.transactionDetails.map(td =>
+      StcChargeFailure(
+        recordId = td.recordId,
+        errorCode = FailedSubmissionErrorCode,
+        errorText = FailedSubmissionErrorText
+      )
+    )

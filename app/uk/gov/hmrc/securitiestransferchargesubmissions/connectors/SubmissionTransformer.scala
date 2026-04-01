@@ -21,7 +21,7 @@ import play.api.libs.json.Reads
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.controllers.{TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransferType}
 
 import javax.inject.{Inject, Singleton}
 

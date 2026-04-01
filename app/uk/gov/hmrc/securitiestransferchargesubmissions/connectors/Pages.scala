@@ -17,7 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import play.api.libs.json.Reads
-import uk.gov.hmrc.securitiestransferchargesubmissions.controllers.TransferData
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
 
 import java.time.LocalDate
 
