@@ -25,7 +25,7 @@ import play.api.libs.json.Json
 import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
 import uk.gov.hmrc.http.HeaderCarrier
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeSuccess
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.{SubmissionOutcome, SubmissionService}
 
@@ -42,10 +42,14 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
   private val successService = new SubmissionService:
     override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(SubmissionOutcome.Submitted(Seq(StcChargeFailure(1, "INVALID_REQUEST", "x"))))
+      Future.successful(SubmissionOutcome.Submitted(Seq(
+        StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
+      )))
 
     override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(SubmissionOutcome.Submitted(Seq(StcChargeFailure(1, "INVALID_REQUEST", "x"))))
+      Future.successful(SubmissionOutcome.Submitted(Seq(
+        StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
+      )))
 
   private val failingService = new SubmissionService:
     override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
@@ -85,6 +89,25 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private val controllerWithMixedSubscriptionFailures = new SubmissionController(controllerComponents, mixedSubscriptionService)
 
   "SubmissionController.submitMultipleTransfersAction" should:
+    "return 200 for a valid multiple-transfer request" in:
+      val request = FakeRequest("POST", "/submission/multiple").withBody(
+        Json.arr(
+          Json.obj(
+            "transferType" -> 1,
+            "subscriptionId" -> "stc-123",
+            "submissionId" -> "sub-123",
+            "submitterAffinity" -> "Individual",
+            "data" -> Json.obj()
+          )
+        )
+      )
+
+      val result = controller.submitMultipleTransfersAction.apply(request)
+
+      status(result) shouldBe OK
+      contentAsString(result) should include("\"recordId\":1")
+      contentAsString(result) should include("\"utrn\":\"utrn-1\"")
+
     "return 400 for an empty JSON array" in:
       val request = FakeRequest("POST", "/submission/multiple").withBody(Json.arr())
 
@@ -92,6 +115,18 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
       status(result) shouldBe BAD_REQUEST
       contentAsString(result) should include("at least one transfer must be provided")
+
+    "return 400 for invalid multiple-transfer JSON schema" in:
+      val request = FakeRequest("POST", "/submission/multiple").withBody(
+        Json.obj("unexpected" -> "shape")
+      )
+
+      val result = controller.submitMultipleTransfersAction.apply(request)
+
+      status(result) shouldBe BAD_REQUEST
+      val responseBody = contentAsString(result)
+      responseBody should include("\"error\":\"invalid transfer data\"")
+      responseBody should include("\"details\"")
 
     "return 400 with all transformation failures including request indexes" in:
       val request = FakeRequest("POST", "/submission/multiple").withBody(
@@ -156,6 +191,39 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("all transfers in a batch must have the same subscriptionId")
 
   "SubmissionController.submitSingleTransferAction" should:
+    "return 200 for a valid single-transfer request" in:
+      val request = FakeRequest("POST", "/submission/single").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "submissionId" -> "sub-123",
+          "submitterAffinity" -> "Individual",
+          "data" -> Json.obj()
+        )
+      )
+
+      val result = controller.submitSingleTransferAction.apply(request)
+
+      status(result) shouldBe OK
+      contentAsString(result) should include("\"recordId\":1")
+      contentAsString(result) should include("\"utrn\":\"utrn-1\"")
+
+    "return 400 for invalid single-transfer JSON schema" in:
+      val request = FakeRequest("POST", "/submission/single").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "data" -> Json.obj()
+        )
+      )
+
+      val result = controller.submitSingleTransferAction.apply(request)
+
+      status(result) shouldBe BAD_REQUEST
+      val responseBody = contentAsString(result)
+      responseBody should include("\"error\":\"invalid transfer data\"")
+      responseBody should include("\"details\"")
+
     "return 400 with transformation errors" in:
       val request = FakeRequest("POST", "/submission/single").withBody(
         Json.obj(

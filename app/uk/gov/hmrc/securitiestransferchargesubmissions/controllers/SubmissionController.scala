@@ -19,7 +19,6 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
 import play.api.libs.json.*
 import play.api.mvc.*
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
@@ -47,10 +46,7 @@ class SubmissionController @Inject()(
           .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsError(errors) =>
-        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(
-          error = ErrorMessages.InvalidTransferData,
-          details = Some(JsError.toJson(errors))
-        ))))
+        Future.successful(badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors))))
   }
 
   def submitMultipleTransfersAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
@@ -61,12 +57,9 @@ class SubmissionController @Inject()(
           .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsSuccess(_, _) =>
-        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(ErrorMessages.EmptyTransferBatch))))
+        Future.successful(badRequest(ErrorMessages.EmptyTransferBatch))
       case JsError(errors) =>
-        Future.successful(BadRequest(Json.toJson(ApiErrorResponse(
-          error = ErrorMessages.InvalidTransferData,
-          details = Some(JsError.toJson(errors))
-        ))))
+        Future.successful(badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors))))
   }
 
   private def toHttpResult(outcome: SubmissionOutcome): Result =
@@ -74,16 +67,13 @@ class SubmissionController @Inject()(
       case SubmissionOutcome.Submitted(responses) =>
         Ok(Json.toJson(responses))
       case SubmissionOutcome.TransformationFailed(errors) =>
-        BadRequest(Json.toJson(ApiErrorResponse(
-          error = ErrorMessages.InvalidTransferData,
-          details = Some(Json.toJson(errors))
-        )))
+        badRequest(ErrorMessages.InvalidTransferData, Some(Json.toJson(errors)))
+
+  private def badRequest(error: String, details: Option[JsValue] = None): Result =
+    BadRequest(Json.toJson(ApiErrorResponse(error = error, details = details)))
 
   private def handleClientMappingErrors: PartialFunction[Throwable, Result] =
     case e: JsResultException =>
-      BadRequest(Json.toJson(ApiErrorResponse(
-        error = ErrorMessages.InvalidTransferData,
-        details = Some(JsError.toJson(e.errors))
-      )))
+      badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(e.errors)))
     case e: IllegalArgumentException =>
-      BadRequest(Json.toJson(ApiErrorResponse(e.getMessage)))
+      badRequest(e.getMessage)
