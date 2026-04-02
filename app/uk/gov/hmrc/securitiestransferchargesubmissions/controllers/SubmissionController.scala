@@ -20,7 +20,7 @@ import play.api.libs.json.*
 import play.api.mvc.*
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchRequest, TransferItem}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchRequest
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.{ErrorMessages, SubmissionOutcome, SubmissionService}
 
@@ -41,18 +41,8 @@ class SubmissionController @Inject()(
   def submitBatchAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
     request.body.validate[TransferBatchRequest] match
       case JsSuccess(data, _) if data.transfers.nonEmpty =>
-        val items: Seq[TransferItem] = data.transfers.map { transfer =>
-          TransferItem(
-            transferType = data.transferType,
-            subscriptionId = data.subscriptionId,
-            submissionId = data.submissionId,
-            submitterAffinity = data.submitterAffinity,
-            data = transfer.data
-          )
-        }
-
         submissionService
-          .submitMultipleTransfers(items)
+          .submitMultipleTransfers(data)
           .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsSuccess(_, _) =>

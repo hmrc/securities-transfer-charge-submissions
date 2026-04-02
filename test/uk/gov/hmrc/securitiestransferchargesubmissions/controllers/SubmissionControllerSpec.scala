@@ -26,7 +26,7 @@ import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeSuccess
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransformationFailure}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchRequest, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.{SubmissionOutcome, SubmissionService}
 
 import scala.concurrent.Await
@@ -42,14 +42,14 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
   private val successService = new SubmissionService:
 
-    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+    override def submitMultipleTransfers(data: TransferBatchRequest)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
       Future.successful(SubmissionOutcome.Submitted(Seq(
         StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
       )))
 
   private val failingService = new SubmissionService:
 
-    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+    override def submitMultipleTransfers(data: TransferBatchRequest)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
       Future.successful(
         SubmissionOutcome.TransformationFailed(
           Seq(
@@ -59,18 +59,8 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         )
       )
 
-  private val mixedSubscriptionService = new SubmissionService:
-
-    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(
-        SubmissionOutcome.TransformationFailed(
-          Seq(TransformationFailure(2, 1, "INVALID_REQUEST", "all transfers in a batch must have the same subscriptionId"))
-        )
-      )
-
   private val controller = new SubmissionController(controllerComponents, successService)
   private val controllerWithTransformationFailures = new SubmissionController(controllerComponents, failingService)
-  private val controllerWithMixedSubscriptionFailures = new SubmissionController(controllerComponents, mixedSubscriptionService)
 
   "SubmissionController.submitBatchAction" should:
     "return 200 for a valid multiple-transfer request" in:
@@ -146,29 +136,6 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("\"errorCode\":\"INVALID_REQUEST\"")
       responseBody should include("invalid-transfer-1")
       responseBody should include("invalid-transfer-2")
-
-    "return 400 including mixed-subscriptionId validation details" in:
-      val request = FakeRequest("POST", "/submission").withBody(
-        Json.obj(
-          "transferType" -> 1,
-          "subscriptionId" -> "stc-123",
-          "submissionId" -> "sub-123",
-          "submitterAffinity" -> "Individual",
-          "transfers" -> Json.arr(
-            Json.obj("data" -> Json.obj()),
-            Json.obj("data" -> Json.obj())
-          )
-        )
-      )
-
-      val result = controllerWithMixedSubscriptionFailures.submitBatchAction.apply(request)
-
-      status(result) shouldBe BAD_REQUEST
-      val responseBody = contentAsString(result)
-      responseBody should include("\"error\":\"invalid transfer data\"")
-      responseBody should include("\"errorCode\":\"INVALID_REQUEST\"")
-      responseBody should include("\"requestIndex\":1")
-      responseBody should include("all transfers in a batch must have the same subscriptionId")
 
 
   override def afterAll(): Unit =

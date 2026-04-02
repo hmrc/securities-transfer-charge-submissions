@@ -21,7 +21,7 @@ import play.api.libs.json.Reads
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchContext, TransferData, TransferType}
 
 import javax.inject.{Inject, Singleton}
 
@@ -37,21 +37,16 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
    * `etmpCreateMaxRecordsPerRequest` and transforms each batch into a
    * multi-record [[StcTransactionCreateRequest]].
    *
-   * Records are first partitioned by `submissionId` so that no batch ever
-   * mixes records belonging to different submissions.
+   * All records are expected to share the same submission context from the
+   * incoming batch request.
    */
   def toRequests(
     singles: Seq[StcTransactionCreateSingleRecordRequest]
   ): Seq[StcTransactionCreateRequest] =
     singles
-      .groupBy(_.submissionId)
-      .values
+      .grouped(appConfig.etmpCreateMaxRecordsPerRequest)
       .toSeq
-      .flatMap(
-        _.grouped(appConfig.etmpCreateMaxRecordsPerRequest)
-          .toSeq
-          .map(toBatchRequest)
-      )
+      .map(toBatchRequest)
 
   /**
    * Converts a [[StcTransactionCreateResponse]] back into a per-record
@@ -81,14 +76,19 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
         request.transactionDetails.map(td => StcChargeFailure(td.recordId, errors.code, errors.text))
 
   /**
-   * Converts a single [[TransferData]] into a [[StcTransactionCreateSingleRecordRequest]].
+   * Converts a single transfer payload plus shared batch context into a
+   * [[StcTransactionCreateSingleRecordRequest]].
    */
-  def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
+  def toSingleRecordRequest(
+    recordId: Int,
+    context: TransferBatchContext,
+    data: TransferData
+  ): StcTransactionCreateSingleRecordRequest =
     val chargingPoint = required(Pages.ChargingPointPage)(data)
     val connectedPersons = required(Pages.ConnectedPersonsPage)(data)
     val sellerName = required(Pages.NameOfSellerPage)(data)
     val sellerAddress = required(Pages.StfSellerAddressPage)(data)
-    val buyerAddress = buyerAddressFor(data)
+    val buyerAddress = buyerAddressFor(context, data)
     val securitiesTarget = required(Pages.SecuritiesTargetPage)(data)
     val applyingForRelief = required(Pages.ApplyingForReliefPage)(data)
     val taxRate = required(Pages.TaxRatePage)(data)
@@ -120,9 +120,9 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
 
     StcTransactionCreateSingleRecordRequest(
       recordId = recordId,
-      submissionId = data.submissionId,
+      submissionId = context.submissionId,
       transactionDetails = TransactionDetailsCreateSingleRecord(
-        transactionType = toTransactionType(data.transferType),
+        transactionType = toTransactionType(context.transferType),
         reasonForPurchase = None,
         descriptionOfSecurity = descriptionOfSecurity,
         numberOfShares = detailsOfTransfer.map(d => parseShareCount(d.numberOfShares)).getOrElse(0),
@@ -166,7 +166,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
       otherBuyers = None,
       agentDetails = None,
       declaration = DeclarationCreateSingleRecord(
-        role1 = Some(data.submitterAffinity.toString),
+        role1 = Some(context.submitterAffinity.toString),
         role2 = None,
         name = sellerName,
         addr1 = addressLine(sellerAddress.address.lines, 0),
@@ -184,20 +184,20 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private def required[A: Reads](page: Pages[A])(data: TransferItem): A =
+  private def required[A: Reads](page: Pages[A])(data: TransferData): A =
     Pages.getData[A](using summon[Reads[A]])(page)(data)
 
-  private def optional[A: Reads](page: Pages[A])(data: TransferItem): Option[A] =
+  private def optional[A: Reads](page: Pages[A])(data: TransferData): Option[A] =
     (data.data \ page.path).asOpt[A]
 
-  private def buyerAddressFor(data: TransferItem): BuyerAddressData =
+  private def buyerAddressFor(context: TransferBatchContext, data: TransferData): BuyerAddressData =
     optional(Pages.StfBuyersAddressPage)(data)
       .map(BuyerAddressData.fromAlf)
       .orElse {
         optional(Pages.ConfirmAddressPage)(data).map(BuyerAddressData.fromConfirmable)
       }
       .getOrElse {
-        data.submitterAffinity match
+        context.submitterAffinity match
           case AffinityGroup.Individual => missing("buyerAddress or confirmedAddress for individual journey")
           case AffinityGroup.Organisation => missing("buyerAddress or confirmedAddress for organisation journey")
           case _ => missing("buyerAddress or confirmedAddress")

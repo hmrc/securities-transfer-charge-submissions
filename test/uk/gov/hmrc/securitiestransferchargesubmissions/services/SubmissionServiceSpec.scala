@@ -26,7 +26,7 @@ import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchContext, TransferBatchRequest, TransferData, TransferType, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.validation.{TransformationValidationOutcome, TransferTransformationValidator, TransferTransformationValidatorImpl}
 
 import scala.collection.mutable.ArrayBuffer
@@ -49,13 +49,13 @@ class SubmissionServiceSpec extends AnyWordSpec with Matchers with ScalaFutures:
     )
   )
 
-  private def transferItem(submissionId: String, subscriptionId: String = "stc-123"): TransferItem =
-    TransferItem(
+  private def batchRequest(submissionId: String, size: Int = 2): TransferBatchRequest =
+    TransferBatchRequest(
       transferType = TransferType.STF,
-      subscriptionId = subscriptionId,
+      subscriptionId = "stc-123",
       submissionId = submissionId,
       submitterAffinity = AffinityGroup.Individual,
-      data = Json.obj()
+      transfers = List.fill(size)(TransferData(Json.obj()))
     )
 
   "SubmissionServiceImpl.submitMultipleTransfers" should:
@@ -65,9 +65,13 @@ class SubmissionServiceSpec extends AnyWordSpec with Matchers with ScalaFutures:
 
       var capturedStcId: Option[String] = None
       var capturedTransfers: Seq[StcTransactionCreateSingleRecordRequest] = Seq.empty
+      var capturedContext: Option[TransferBatchContext] = None
+      var capturedData: Seq[TransferData] = Seq.empty
 
       val validator = new TransferTransformationValidator:
-        override def validate(data: Seq[TransferItem]): TransformationValidationOutcome =
+        override def validate(context: TransferBatchContext, data: Seq[TransferData]): TransformationValidationOutcome =
+          capturedContext = Some(context)
+          capturedData = data
           TransformationValidationOutcome.Valid(requests)
 
       val connector = new SubmissionConnector:
@@ -82,21 +86,31 @@ class SubmissionServiceSpec extends AnyWordSpec with Matchers with ScalaFutures:
 
       val service = new SubmissionServiceImpl(connector, validator)
 
-      val outcome = service.submitMultipleTransfers(Seq(transferItem("sub-1"), transferItem("sub-2"))).futureValue
+      val request = batchRequest("sub-1")
+      val outcome = service.submitMultipleTransfers(request).futureValue
 
       capturedStcId shouldBe Some("stc-123")
       capturedTransfers shouldBe requests
+      capturedContext shouldBe Some(request.context)
+      capturedData shouldBe request.transfers
       val SubmissionOutcome.Submitted(responses) = outcome: @unchecked
       responses shouldBe connectorResponses
 
-    "return validation failures for mixed subscriptionIds and not call connector" in:
+    "return transformation failures and not call connector" in:
       var connectorCalled = false
 
-      val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
-          singleRecordRequest(recordId)
-
-      val validator = new TransferTransformationValidatorImpl(transformer)
+      val validator = new TransferTransformationValidator:
+        override def validate(context: TransferBatchContext, data: Seq[TransferData]): TransformationValidationOutcome =
+          TransformationValidationOutcome.Invalid(
+            data.zipWithIndex.map { case (_, idx) =>
+              TransformationFailure(
+                recordId = idx + 1,
+                requestIndex = idx,
+                errorCode = ErrorMessages.InvalidRequestCode,
+                errorText = s"invalid-transfer-${idx + 1}"
+              )
+            }
+          )
 
       val connector = new SubmissionConnector:
         override def submitTransfers(
@@ -109,25 +123,23 @@ class SubmissionServiceSpec extends AnyWordSpec with Matchers with ScalaFutures:
 
       val service = new SubmissionServiceImpl(connector, validator)
 
-      val outcome = service.submitMultipleTransfers(
-        Seq(
-          transferItem("sub-1", "stc-123"),
-          transferItem("sub-2", "stc-999"),
-          transferItem("sub-3", "stc-888")
-        )
-      ).futureValue
+      val outcome = service.submitMultipleTransfers(batchRequest("sub-1", size = 3)).futureValue
 
       connectorCalled shouldBe false
       val SubmissionOutcome.TransformationFailed(errors) = outcome: @unchecked
-      errors.map(_.recordId) shouldBe Seq(2, 3)
-      errors.map(_.errorText).distinct shouldBe Seq("all transfers in a batch must have the same subscriptionId")
+      errors.map(_.recordId) shouldBe Seq(1, 2, 3)
+      errors.map(_.errorText).distinct shouldBe Seq("invalid-transfer-1", "invalid-transfer-2", "invalid-transfer-3")
 
     "return all transformation failures and not call the connector" in:
       val transformedRecordIds = ArrayBuffer.empty[Int]
       var connectorCalled = false
 
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: TransferBatchContext,
+          data: TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           transformedRecordIds += recordId
           throw new IllegalArgumentException(s"invalid-transfer-$recordId")
 
@@ -143,8 +155,7 @@ class SubmissionServiceSpec extends AnyWordSpec with Matchers with ScalaFutures:
       val validator = new TransferTransformationValidatorImpl(transformer)
       val service = new SubmissionServiceImpl(connector, validator)
 
-      val outcome =
-        service.submitMultipleTransfers(Seq(transferItem("sub-1"), transferItem("sub-2"))).futureValue
+      val outcome = service.submitMultipleTransfers(batchRequest("sub-1")).futureValue
 
       transformedRecordIds.toSeq shouldBe Seq(1, 2)
       connectorCalled shouldBe false

@@ -23,7 +23,7 @@ import play.api.libs.json.{JsNull, JsObject, JsResultException, Json}
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchContext, TransferData, TransferType}
 
 import java.time.LocalDate
 
@@ -57,30 +57,16 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
   private val transformerMax3 = new SubmissionTransformer(appConfigMax3)
 
-  private def transferData(
-    affinity: AffinityGroup,
-    data: JsObject
-  ): TransferItem =
-    TransferItem(
-      transferType = TransferType.STF,
-      subscriptionId = "sub-123",
-      submissionId = "submission-123",
-      submitterAffinity = affinity,
-      data = data
-    )
-
-  private def transferDataWithType(
-    affinity: AffinityGroup,
-    transferType: TransferType,
-    data: JsObject
-  ): TransferItem =
-    TransferItem(
+  private def context(affinity: AffinityGroup, transferType: TransferType = TransferType.STF): TransferBatchContext =
+    TransferBatchContext(
       transferType = transferType,
       subscriptionId = "sub-123",
       submissionId = "submission-123",
-      submitterAffinity = affinity,
-      data = data
+      submitterAffinity = affinity
     )
+
+  private def transferData(data: JsObject): TransferData =
+    TransferData(data)
 
   private def singleRecordRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
     singleRecordRequestWithSubmissionId(recordId, "submission-123")
@@ -310,25 +296,11 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         Seq(7, 8)
       )
 
-    "never mix records from different submissionIds in the same batch" in:
-      val singles = Seq(
-        singleRecordRequestWithSubmissionId(1, "sub-A"),
-        singleRecordRequestWithSubmissionId(2, "sub-B"),
-        singleRecordRequestWithSubmissionId(3, "sub-A")
-      )
-
-      val result = transformerMax3.toRequests(singles)
-
-      result.size shouldBe 2
-      val bySubmission = result.map(r => r.submissionId -> r.transactionDetails.map(_.recordId)).toMap
-      bySubmission("sub-A") shouldBe Seq(1, 3)
-      bySubmission("sub-B") shouldBe Seq(2)
 
   "SubmissionTransformer.toSingleRecordRequest" should:
     "map a shares journey using DetailsOfThisTransfer and buyerAddress" in:
       val data = transferData(
-        affinity = AffinityGroup.Organisation,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "buyerAddress" -> baseBuyerAlfAddress,
           "whatTypeOfSecurities" -> "shares",
           "detailsOfThisTransfer" -> Json.obj(
@@ -340,7 +312,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val result = transformer.toSingleRecordRequest(recordId = 7, data)
+      val result = transformer.toSingleRecordRequest(recordId = 7, context = context(AffinityGroup.Organisation), data = data)
 
       result.recordId shouldBe 7
       result.transactionDetails.descriptionOfSecurity shouldBe "Ordinary shares"
@@ -351,8 +323,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
     "map an other-securities connected-persons journey and require totalMarketValue" in:
       val data = transferData(
-        affinity = AffinityGroup.Organisation,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "buyerAddress" -> baseBuyerAlfAddress,
           "connectedPersons" -> true,
           "taxRate" -> "oneAndHalf",
@@ -363,7 +334,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val result = transformer.toSingleRecordRequest(recordId = 8, data)
+      val result = transformer.toSingleRecordRequest(recordId = 8, context = context(AffinityGroup.Organisation), data = data)
 
       result.transactionDetails.descriptionOfSecurity shouldBe "Preference units"
       result.transactionDetails.numberOfShares shouldBe 0
@@ -373,8 +344,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
     "throw a JsResultException when connected persons + other securities is missing totalMarketValuePage" in:
       val data = transferData(
-        affinity = AffinityGroup.Organisation,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "buyerAddress" -> baseBuyerAlfAddress,
           "connectedPersons" -> true,
           "whatTypeOfSecurities" -> "other",
@@ -383,13 +353,16 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val thrown = the[JsResultException] thrownBy transformer.toSingleRecordRequest(recordId = 11, data)
+      val thrown = the[JsResultException] thrownBy transformer.toSingleRecordRequest(
+        recordId = 11,
+        context = context(AffinityGroup.Organisation),
+        data = data
+      )
       thrown.errors.toString should include("totalMarketValuePage")
 
     "fallback to confirmedAddress when buyerAddress is missing" in:
       val data = transferData(
-        affinity = AffinityGroup.Individual,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "confirmedAddress" -> baseConfirmableAddress,
           "whatTypeOfSecurities" -> "shares",
           "detailsOfThisTransfer" -> Json.obj(
@@ -401,7 +374,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val result = transformer.toSingleRecordRequest(recordId = 9, data)
+      val result = transformer.toSingleRecordRequest(recordId = 9, context = context(AffinityGroup.Individual), data = data)
 
       result.mainBuyerDetails.addr1 shouldBe "confirmed buyer line 1"
       result.mainBuyerDetails.postcode shouldBe "BB22BB"
@@ -409,8 +382,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
     "throw an IllegalArgumentException when both buyerAddress and confirmedAddress are missing" in:
       val data = transferData(
-        affinity = AffinityGroup.Individual,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "whatTypeOfSecurities" -> "shares",
           "detailsOfThisTransfer" -> Json.obj(
             "numberOfShares" -> "1",
@@ -421,13 +393,16 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(recordId = 10, data)
+      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(
+        recordId = 10,
+        context = context(AffinityGroup.Individual),
+        data = data
+      )
       thrown.getMessage should include("buyerAddress or confirmedAddress")
 
     "set reliefClaimedName when applyingForRelief is true and a relief is provided" in:
       val data = transferData(
-        affinity = AffinityGroup.Organisation,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "buyerAddress" -> baseBuyerAlfAddress,
           "applyingForRelief" -> true,
           "whatReliefAreYouApplyingFor" -> "groupRelief",
@@ -441,7 +416,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val result = transformer.toSingleRecordRequest(recordId = 12, data)
+      val result = transformer.toSingleRecordRequest(recordId = 12, context = context(AffinityGroup.Organisation), data = data)
       result.transactionDetails.reliefClaimedName shouldBe Some("groupRelief")
 
     "map TransferType.SH03 and TransferType.Other to transaction types 2 and 3" in:
@@ -458,11 +433,13 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
       val sh03 = transformer.toSingleRecordRequest(
         recordId = 13,
-        data = transferDataWithType(AffinityGroup.Organisation, TransferType.SH03, baseData)
+        context = context(AffinityGroup.Organisation, TransferType.SH03),
+        data = transferData(baseData)
       )
       val other = transformer.toSingleRecordRequest(
         recordId = 14,
-        data = transferDataWithType(AffinityGroup.Organisation, TransferType.Other, baseData)
+        context = context(AffinityGroup.Organisation, TransferType.Other),
+        data = transferData(baseData)
       )
 
       sh03.transactionDetails.transactionType shouldBe 2
@@ -470,8 +447,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
     "throw an IllegalArgumentException when numberOfShares is not an integer" in:
       val data = transferData(
-        affinity = AffinityGroup.Organisation,
-        data = commonPages ++ Json.obj(
+        commonPages ++ Json.obj(
           "buyerAddress" -> baseBuyerAlfAddress,
           "whatTypeOfSecurities" -> "shares",
           "detailsOfThisTransfer" -> Json.obj(
@@ -483,5 +459,9 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(recordId = 15, data)
+      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(
+        recordId = 15,
+        context = context(AffinityGroup.Organisation),
+        data = data
+      )
       thrown.getMessage should include("Unable to parse numberOfShares")

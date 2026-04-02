@@ -114,7 +114,11 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
         )
 
     val transformer = new SubmissionTransformer(cfg):
-      override def toSingleRecordRequest(recordId: Int, data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferItem): StcTransactionCreateSingleRecordRequest =
+      override def toSingleRecordRequest(
+        recordId: Int,
+        context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
+        data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+      ): StcTransactionCreateSingleRecordRequest =
         fail("not used in this test")
 
     (new SubmissionConnectorImpl(submissionClient, transformer, cfg), callCount, batchSizes)
@@ -150,7 +154,11 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
         }.andThen { case _ => inFlight.decrementAndGet() }
 
     val transformer = new SubmissionTransformer(cfg):
-      override def toSingleRecordRequest(recordId: Int, data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferItem): StcTransactionCreateSingleRecordRequest =
+      override def toSingleRecordRequest(
+        recordId: Int,
+        context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
+        data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+      ): StcTransactionCreateSingleRecordRequest =
         fail("not used in this test")
 
     (new SubmissionConnectorImpl(submissionClient, transformer, cfg), maxObserved)
@@ -263,7 +271,11 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
             )
 
       val transformer = new SubmissionTransformer(cfg):
-        override def toSingleRecordRequest(recordId: Int, data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
+          data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           fail("not used in this test")
 
       val connector = new SubmissionConnectorImpl(submissionClient, transformer, cfg)
@@ -306,7 +318,11 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
           }
 
       val transformer = new SubmissionTransformer(cfg):
-        override def toSingleRecordRequest(recordId: Int, data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
+          data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           fail("not used in this test")
 
       val connector = new SubmissionConnectorImpl(submissionClient, transformer, cfg)

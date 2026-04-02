@@ -17,7 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import play.api.libs.json.Reads
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferItem
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
 
 import java.time.LocalDate
 
@@ -40,5 +40,5 @@ enum Pages[A](val path: String):
   case WhatTypeOfSecuritiesPage                 extends Pages[WhatTypeOfSecurities]("whatTypeOfSecurities")
 
 object Pages:
-  def getData[A: Reads]: Pages[A] => TransferItem => A =
+  def getData[A: Reads]: Pages[A] => TransferData => A =
     page => d => (d.data \ page.path).as[A]

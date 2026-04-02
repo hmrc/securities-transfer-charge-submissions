@@ -23,7 +23,7 @@ import play.api.libs.json.Json
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchContext, TransferData, TransferType}
 
 class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
 
@@ -39,36 +39,45 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
     )
   )
 
-  private def transferItem(submissionId: String, subscriptionId: String = "stc-123"): TransferItem =
-    TransferItem(
+  private val context =
+    TransferBatchContext(
       transferType = TransferType.STF,
-      subscriptionId = subscriptionId,
-      submissionId = submissionId,
-      submitterAffinity = AffinityGroup.Individual,
-      data = Json.obj()
+      subscriptionId = "stc-123",
+      submissionId = "sub-1",
+      submitterAffinity = AffinityGroup.Individual
     )
+
+  private def transferData: TransferData = TransferData(Json.obj())
 
   "TransferTransformationValidatorImpl.validate" should:
     "return valid with transformed requests when all items pass" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: TransferBatchContext,
+          data: TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           singleRecordRequest(recordId)
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
-      val outcome = validator.validate(Seq(transferItem("sub-1"), transferItem("sub-2"), transferItem("sub-3")))
+      val outcome = validator.validate(context, Seq(transferData, transferData, transferData))
 
       val TransformationValidationOutcome.Valid(requests) = outcome: @unchecked
       requests.map(_.recordId) shouldBe Seq(1, 2, 3)
 
     "return invalid with all errors and request indexes" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: TransferBatchContext,
+          data: TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           throw new IllegalArgumentException(s"invalid-transfer-$recordId")
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
-      val outcome = validator.validate(Seq(transferItem("sub-1"), transferItem("sub-2")))
+      val outcome = validator.validate(context, Seq(transferData, transferData))
 
       val TransformationValidationOutcome.Invalid(errors) = outcome: @unchecked
       errors.map(_.recordId) shouldBe Seq(1, 2)
@@ -76,48 +85,24 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
       errors.map(_.errorCode) shouldBe Seq("INVALID_REQUEST", "INVALID_REQUEST")
       errors.map(_.errorText) shouldBe Seq("invalid-transfer-1", "invalid-transfer-2")
 
-    "return invalid when subscriptionIds differ in the same batch" in:
+    "return invalid when one transfer fails transformation" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
-          singleRecordRequest(recordId)
-
-      val validator = new TransferTransformationValidatorImpl(transformer)
-
-      val outcome = validator.validate(
-        Seq(
-          transferItem("sub-1", subscriptionId = "stc-123"),
-          transferItem("sub-2", subscriptionId = "stc-999"),
-          transferItem("sub-3", subscriptionId = "stc-123"),
-          transferItem("sub-4", subscriptionId = "stc-888")
-        )
-      )
-
-      val TransformationValidationOutcome.Invalid(errors) = outcome: @unchecked
-      errors.map(_.recordId) shouldBe Seq(2, 4)
-      errors.map(_.requestIndex) shouldBe Seq(1, 3)
-      errors.map(_.errorCode).distinct shouldBe Seq("INVALID_REQUEST")
-      errors.map(_.errorText).distinct shouldBe Seq("all transfers in a batch must have the same subscriptionId")
-
-    "return aggregated failures when subscriptionId mismatches and transformation errors both exist" in:
-      val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(
+          recordId: Int,
+          context: TransferBatchContext,
+          data: TransferData
+        ): StcTransactionCreateSingleRecordRequest =
           if recordId == 2 then throw new IllegalArgumentException("invalid-transfer-2")
           else singleRecordRequest(recordId)
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
-      val outcome = validator.validate(
-        Seq(
-          transferItem("sub-1", subscriptionId = "stc-123"),
-          transferItem("sub-2", subscriptionId = "stc-999"),
-          transferItem("sub-3", subscriptionId = "stc-888")
-        )
-      )
+      val outcome = validator.validate(context, Seq(transferData, transferData, transferData))
 
       val TransformationValidationOutcome.Invalid(errors) = outcome: @unchecked
-      errors.map(_.recordId) should contain allOf (2, 3)
-      errors.exists(e => e.recordId == 2 && e.errorText == "invalid-transfer-2") shouldBe true
-      errors.exists(e => e.recordId == 2 && e.errorText == "all transfers in a batch must have the same subscriptionId") shouldBe true
+      errors.map(_.recordId) shouldBe Seq(2)
+      errors.map(_.requestIndex) shouldBe Seq(1)
+      errors.map(_.errorText) shouldBe Seq("invalid-transfer-2")
 
   private def singleRecordRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
     StcTransactionCreateSingleRecordRequest(

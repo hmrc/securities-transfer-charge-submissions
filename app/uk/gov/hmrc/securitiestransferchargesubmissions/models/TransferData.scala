@@ -32,18 +32,23 @@ case class TransferBatchRequest(
   submissionId: String,
   submitterAffinity: AffinityGroup,
   transfers: Seq[TransferData]
-)
+):
+  def context: TransferBatchContext =
+    TransferBatchContext(
+      transferType = transferType,
+      subscriptionId = subscriptionId,
+      submissionId = submissionId,
+      submitterAffinity = submitterAffinity
+    )
 
 object TransferBatchRequest:
   given Reads[TransferBatchRequest] = Json.reads[TransferBatchRequest]
 
-
-case class TransferItem(
+case class TransferBatchContext(
   transferType: TransferType,
   subscriptionId: String,
   submissionId: String,
-  submitterAffinity: AffinityGroup,
-  data: JsObject
+  submitterAffinity: AffinityGroup
 )
 
 enum TransferType:
