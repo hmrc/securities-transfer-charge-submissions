@@ -23,7 +23,7 @@ import play.api.libs.json.Json
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
 
 class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
 
@@ -39,8 +39,8 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
     )
   )
 
-  private def transferData(submissionId: String, subscriptionId: String = "stc-123"): TransferData =
-    TransferData(
+  private def transferItem(submissionId: String, subscriptionId: String = "stc-123"): TransferItem =
+    TransferItem(
       transferType = TransferType.STF,
       subscriptionId = subscriptionId,
       submissionId = submissionId,
@@ -51,24 +51,24 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
   "TransferTransformationValidatorImpl.validate" should:
     "return valid with transformed requests when all items pass" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferData): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
           singleRecordRequest(recordId)
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
-      val outcome = validator.validate(Seq(transferData("sub-1"), transferData("sub-2"), transferData("sub-3")))
+      val outcome = validator.validate(Seq(transferItem("sub-1"), transferItem("sub-2"), transferItem("sub-3")))
 
       val TransformationValidationOutcome.Valid(requests) = outcome: @unchecked
       requests.map(_.recordId) shouldBe Seq(1, 2, 3)
 
     "return invalid with all errors and request indexes" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferData): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
           throw new IllegalArgumentException(s"invalid-transfer-$recordId")
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
-      val outcome = validator.validate(Seq(transferData("sub-1"), transferData("sub-2")))
+      val outcome = validator.validate(Seq(transferItem("sub-1"), transferItem("sub-2")))
 
       val TransformationValidationOutcome.Invalid(errors) = outcome: @unchecked
       errors.map(_.recordId) shouldBe Seq(1, 2)
@@ -78,17 +78,17 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
 
     "return invalid when subscriptionIds differ in the same batch" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferData): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
           singleRecordRequest(recordId)
 
       val validator = new TransferTransformationValidatorImpl(transformer)
 
       val outcome = validator.validate(
         Seq(
-          transferData("sub-1", subscriptionId = "stc-123"),
-          transferData("sub-2", subscriptionId = "stc-999"),
-          transferData("sub-3", subscriptionId = "stc-123"),
-          transferData("sub-4", subscriptionId = "stc-888")
+          transferItem("sub-1", subscriptionId = "stc-123"),
+          transferItem("sub-2", subscriptionId = "stc-999"),
+          transferItem("sub-3", subscriptionId = "stc-123"),
+          transferItem("sub-4", subscriptionId = "stc-888")
         )
       )
 
@@ -100,7 +100,7 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
 
     "return aggregated failures when subscriptionId mismatches and transformation errors both exist" in:
       val transformer = new SubmissionTransformer(appConfig):
-        override def toSingleRecordRequest(recordId: Int, data: TransferData): StcTransactionCreateSingleRecordRequest =
+        override def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
           if recordId == 2 then throw new IllegalArgumentException("invalid-transfer-2")
           else singleRecordRequest(recordId)
 
@@ -108,9 +108,9 @@ class TransferTransformationValidatorSpec extends AnyWordSpec with Matchers:
 
       val outcome = validator.validate(
         Seq(
-          transferData("sub-1", subscriptionId = "stc-123"),
-          transferData("sub-2", subscriptionId = "stc-999"),
-          transferData("sub-3", subscriptionId = "stc-888")
+          transferItem("sub-1", subscriptionId = "stc-123"),
+          transferItem("sub-2", subscriptionId = "stc-999"),
+          transferItem("sub-3", subscriptionId = "stc-888")
         )
       )
 

@@ -20,15 +20,31 @@ import play.api.libs.json.*
 import uk.gov.hmrc.auth.core.AffinityGroup
 
 case class TransferData(
+  data: JsObject
+)
+
+object TransferData:
+  given Reads[TransferData] = Json.reads[TransferData]
+
+case class TransferBatchRequest(
+  transferType: TransferType,
+  subscriptionId: String,
+  submissionId: String,
+  submitterAffinity: AffinityGroup,
+  transfers: Seq[TransferData]
+)
+
+object TransferBatchRequest:
+  given Reads[TransferBatchRequest] = Json.reads[TransferBatchRequest]
+
+
+case class TransferItem(
   transferType: TransferType,
   subscriptionId: String,
   submissionId: String,
   submitterAffinity: AffinityGroup,
   data: JsObject
 )
-
-object TransferData:
-  given Reads[TransferData] = Json.reads[TransferData]
 
 enum TransferType:
   case STF, SH03, Other

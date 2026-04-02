@@ -10,7 +10,11 @@
 # Summary
 This service deals with transfer details.
 
-Transfer details can be collected from the UI forms and submitted singly (Enter transfer details) or as rows on a spreadsheet (Upload bulk transfer).
+Transfer details can be collected from the UI forms and submitted as one or more transfers in a batch payload.
+
+Current submission endpoint:
+
+- `POST /submission` with a `TransferBatchRequest` body (`transfers` can contain a single item or many).
 
 After submission, transfer details can be viewed and amended if required, although not all fields are amendable.
 

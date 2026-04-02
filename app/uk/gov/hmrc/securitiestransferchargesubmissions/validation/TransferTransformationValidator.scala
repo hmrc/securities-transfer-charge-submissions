@@ -17,7 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.validation
 
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{StcTransactionCreateSingleRecordRequest, SubmissionTransformer}
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransformationFailure}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
 import javax.inject.{Inject, Singleton}
@@ -28,12 +28,12 @@ enum TransformationValidationOutcome:
   case Invalid(errors: Seq[TransformationFailure])
 
 trait TransferTransformationValidator:
-  def validate(data: Seq[TransferData]): TransformationValidationOutcome
+  def validate(data: Seq[TransferItem]): TransformationValidationOutcome
 
 @Singleton
 class TransferTransformationValidatorImpl @Inject()(transformer: SubmissionTransformer) extends TransferTransformationValidator:
 
-  override def validate(data: Seq[TransferData]): TransformationValidationOutcome =
+  override def validate(data: Seq[TransferItem]): TransformationValidationOutcome =
     val subscriptionIdFailures =
       data.headOption.toSeq.flatMap { head =>
         data.zipWithIndex.collect {

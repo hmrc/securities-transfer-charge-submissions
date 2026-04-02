@@ -26,7 +26,7 @@ import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeSuccess
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransformationFailure}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.{SubmissionOutcome, SubmissionService}
 
 import scala.concurrent.Await
@@ -41,25 +41,15 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private val controllerComponents = Helpers.stubControllerComponents()
 
   private val successService = new SubmissionService:
-    override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(SubmissionOutcome.Submitted(Seq(
-        StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
-      )))
 
-    override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
       Future.successful(SubmissionOutcome.Submitted(Seq(
         StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
       )))
 
   private val failingService = new SubmissionService:
-    override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(
-        SubmissionOutcome.TransformationFailed(
-          Seq(TransformationFailure(1, 0, "INVALID_REQUEST", "invalid-transfer-1"))
-        )
-      )
 
-    override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
       Future.successful(
         SubmissionOutcome.TransformationFailed(
           Seq(
@@ -70,14 +60,8 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       )
 
   private val mixedSubscriptionService = new SubmissionService:
-    override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-      Future.successful(
-        SubmissionOutcome.TransformationFailed(
-          Seq(TransformationFailure(1, 0, "INVALID_REQUEST", "all transfers in a batch must have the same subscriptionId"))
-        )
-      )
 
-    override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+    override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
       Future.successful(
         SubmissionOutcome.TransformationFailed(
           Seq(TransformationFailure(2, 1, "INVALID_REQUEST", "all transfers in a batch must have the same subscriptionId"))
@@ -88,40 +72,48 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private val controllerWithTransformationFailures = new SubmissionController(controllerComponents, failingService)
   private val controllerWithMixedSubscriptionFailures = new SubmissionController(controllerComponents, mixedSubscriptionService)
 
-  "SubmissionController.submitMultipleTransfersAction" should:
+  "SubmissionController.submitBatchAction" should:
     "return 200 for a valid multiple-transfer request" in:
-      val request = FakeRequest("POST", "/submission/multiple").withBody(
-        Json.arr(
-          Json.obj(
-            "transferType" -> 1,
-            "subscriptionId" -> "stc-123",
-            "submissionId" -> "sub-123",
-            "submitterAffinity" -> "Individual",
-            "data" -> Json.obj()
+      val request = FakeRequest("POST", "/submission").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "submissionId" -> "sub-123",
+          "submitterAffinity" -> "Individual",
+          "transfers" -> Json.arr(
+            Json.obj("data" -> Json.obj())
           )
         )
       )
 
-      val result = controller.submitMultipleTransfersAction.apply(request)
+      val result = controller.submitBatchAction.apply(request)
 
       status(result) shouldBe OK
       contentAsString(result) should include("\"recordId\":1")
       contentAsString(result) should include("\"utrn\":\"utrn-1\"")
 
-    "return 400 for an empty JSON array" in:
-      val request = FakeRequest("POST", "/submission/multiple").withBody(Json.arr())
+    "return 400 for an empty transfers array" in:
+      val request = FakeRequest("POST", "/submission").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "submissionId" -> "sub-123",
+          "submitterAffinity" -> "Individual",
+          "transfers" -> Json.arr()
+        )
+      )
 
-      val result = controller.submitMultipleTransfersAction.apply(request)
+      val result = controller.submitBatchAction.apply(request)
 
       status(result) shouldBe BAD_REQUEST
       contentAsString(result) should include("at least one transfer must be provided")
 
-    "return 400 for invalid multiple-transfer JSON schema" in:
-      val request = FakeRequest("POST", "/submission/multiple").withBody(
+    "return 400 for invalid JSON schema" in:
+      val request = FakeRequest("POST", "/submission").withBody(
         Json.obj("unexpected" -> "shape")
       )
 
-      val result = controller.submitMultipleTransfersAction.apply(request)
+      val result = controller.submitBatchAction.apply(request)
 
       status(result) shouldBe BAD_REQUEST
       val responseBody = contentAsString(result)
@@ -129,26 +121,20 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("\"details\"")
 
     "return 400 with all transformation failures including request indexes" in:
-      val request = FakeRequest("POST", "/submission/multiple").withBody(
-        Json.arr(
-          Json.obj(
-            "transferType" -> 1,
-            "subscriptionId" -> "stc-123",
-            "submissionId" -> "sub-123",
-            "submitterAffinity" -> "Individual",
-            "data" -> Json.obj()
-          ),
-          Json.obj(
-            "transferType" -> 1,
-            "subscriptionId" -> "stc-123",
-            "submissionId" -> "sub-123",
-            "submitterAffinity" -> "Individual",
-            "data" -> Json.obj()
+      val request = FakeRequest("POST", "/submission").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "submissionId" -> "sub-123",
+          "submitterAffinity" -> "Individual",
+          "transfers" -> Json.arr(
+            Json.obj("data" -> Json.obj()),
+            Json.obj("data" -> Json.obj())
           )
         )
       )
 
-      val result = controllerWithTransformationFailures.submitMultipleTransfersAction.apply(request)
+      val result = controllerWithTransformationFailures.submitBatchAction.apply(request)
 
       status(result) shouldBe BAD_REQUEST
       val responseBody = contentAsString(result)
@@ -162,26 +148,20 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("invalid-transfer-2")
 
     "return 400 including mixed-subscriptionId validation details" in:
-      val request = FakeRequest("POST", "/submission/multiple").withBody(
-        Json.arr(
-          Json.obj(
-            "transferType" -> 1,
-            "subscriptionId" -> "stc-123",
-            "submissionId" -> "sub-123",
-            "submitterAffinity" -> "Individual",
-            "data" -> Json.obj()
-          ),
-          Json.obj(
-            "transferType" -> 1,
-            "subscriptionId" -> "stc-999",
-            "submissionId" -> "sub-124",
-            "submitterAffinity" -> "Individual",
-            "data" -> Json.obj()
+      val request = FakeRequest("POST", "/submission").withBody(
+        Json.obj(
+          "transferType" -> 1,
+          "subscriptionId" -> "stc-123",
+          "submissionId" -> "sub-123",
+          "submitterAffinity" -> "Individual",
+          "transfers" -> Json.arr(
+            Json.obj("data" -> Json.obj()),
+            Json.obj("data" -> Json.obj())
           )
         )
       )
 
-      val result = controllerWithMixedSubscriptionFailures.submitMultipleTransfersAction.apply(request)
+      val result = controllerWithMixedSubscriptionFailures.submitBatchAction.apply(request)
 
       status(result) shouldBe BAD_REQUEST
       val responseBody = contentAsString(result)
@@ -190,58 +170,6 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("\"requestIndex\":1")
       responseBody should include("all transfers in a batch must have the same subscriptionId")
 
-  "SubmissionController.submitSingleTransferAction" should:
-    "return 200 for a valid single-transfer request" in:
-      val request = FakeRequest("POST", "/submission/single").withBody(
-        Json.obj(
-          "transferType" -> 1,
-          "subscriptionId" -> "stc-123",
-          "submissionId" -> "sub-123",
-          "submitterAffinity" -> "Individual",
-          "data" -> Json.obj()
-        )
-      )
-
-      val result = controller.submitSingleTransferAction.apply(request)
-
-      status(result) shouldBe OK
-      contentAsString(result) should include("\"recordId\":1")
-      contentAsString(result) should include("\"utrn\":\"utrn-1\"")
-
-    "return 400 for invalid single-transfer JSON schema" in:
-      val request = FakeRequest("POST", "/submission/single").withBody(
-        Json.obj(
-          "transferType" -> 1,
-          "subscriptionId" -> "stc-123",
-          "data" -> Json.obj()
-        )
-      )
-
-      val result = controller.submitSingleTransferAction.apply(request)
-
-      status(result) shouldBe BAD_REQUEST
-      val responseBody = contentAsString(result)
-      responseBody should include("\"error\":\"invalid transfer data\"")
-      responseBody should include("\"details\"")
-
-    "return 400 with transformation errors" in:
-      val request = FakeRequest("POST", "/submission/single").withBody(
-        Json.obj(
-          "transferType" -> 1,
-          "subscriptionId" -> "stc-123",
-          "submissionId" -> "sub-123",
-          "submitterAffinity" -> "Individual",
-          "data" -> Json.obj()
-        )
-      )
-
-      val result = controllerWithTransformationFailures.submitSingleTransferAction.apply(request)
-
-      status(result) shouldBe BAD_REQUEST
-      val responseBody = contentAsString(result)
-      responseBody should include("\"recordId\":1")
-      responseBody should include("\"errorCode\":\"INVALID_REQUEST\"")
-      responseBody should include("\"requestIndex\":0")
 
   override def afterAll(): Unit =
     Await.result(summon[ActorSystem].terminate(), 5.seconds)

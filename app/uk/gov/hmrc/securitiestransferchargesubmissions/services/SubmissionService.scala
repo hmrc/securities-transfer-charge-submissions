@@ -19,7 +19,7 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.services
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.StcTransactionCreateSingleRecordResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConnector
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransformationFailure}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransformationFailure}
 import uk.gov.hmrc.securitiestransferchargesubmissions.validation.{TransformationValidationOutcome, TransferTransformationValidator}
 
 import java.util.UUID
@@ -32,8 +32,6 @@ enum SubmissionOutcome:
   case TransformationFailed(errors: Seq[TransformationFailure])
 
 trait SubmissionService:
-  def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome]
-
   /**
    * Processes a batch of transfers with all-or-nothing transformation validation.
    *
@@ -43,7 +41,7 @@ trait SubmissionService:
    *     response per input transfer (success or synthetic failure).
    *   - Response ordering is not significant; callers correlate using `recordId`.
    */
-  def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome]
+  def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome]
 
 @Singleton
 class SubmissionServiceImpl @Inject()(
@@ -51,10 +49,8 @@ class SubmissionServiceImpl @Inject()(
   validator: TransferTransformationValidator
 )(using ec: ExecutionContext) extends SubmissionService:
 
-  override def submitSingleTransfer(data: TransferData)(using hc: HeaderCarrier): Future[SubmissionOutcome] =
-    submitMultipleTransfers(Seq(data))
 
-  override def submitMultipleTransfers(data: Seq[TransferData])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
+  override def submitMultipleTransfers(data: Seq[TransferItem])(using hc: HeaderCarrier): Future[SubmissionOutcome] =
     require(data.nonEmpty, "data must not be empty")
 
     validator.validate(data) match

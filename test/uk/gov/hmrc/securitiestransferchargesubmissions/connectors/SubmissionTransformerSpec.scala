@@ -23,7 +23,7 @@ import play.api.libs.json.{JsNull, JsObject, JsResultException, Json}
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
 
 import java.time.LocalDate
 
@@ -60,8 +60,8 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
   private def transferData(
     affinity: AffinityGroup,
     data: JsObject
-  ): TransferData =
-    TransferData(
+  ): TransferItem =
+    TransferItem(
       transferType = TransferType.STF,
       subscriptionId = "sub-123",
       submissionId = "submission-123",
@@ -73,8 +73,8 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
     affinity: AffinityGroup,
     transferType: TransferType,
     data: JsObject
-  ): TransferData =
-    TransferData(
+  ): TransferItem =
+    TransferItem(
       transferType = transferType,
       subscriptionId = "sub-123",
       submissionId = "submission-123",
@@ -83,9 +83,12 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
     )
 
   private def singleRecordRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
+    singleRecordRequestWithSubmissionId(recordId, "submission-123")
+
+  private def singleRecordRequestWithSubmissionId(recordId: Int, submissionId: String): StcTransactionCreateSingleRecordRequest =
     StcTransactionCreateSingleRecordRequest(
       recordId = recordId,
-      submissionId = "submission-123",
+      submissionId = submissionId,
       transactionDetails = TransactionDetailsCreateSingleRecord(
         transactionType = 1,
         reasonForPurchase = None,
@@ -306,6 +309,20 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         Seq(4, 5, 6),
         Seq(7, 8)
       )
+
+    "never mix records from different submissionIds in the same batch" in:
+      val singles = Seq(
+        singleRecordRequestWithSubmissionId(1, "sub-A"),
+        singleRecordRequestWithSubmissionId(2, "sub-B"),
+        singleRecordRequestWithSubmissionId(3, "sub-A")
+      )
+
+      val result = transformerMax3.toRequests(singles)
+
+      result.size shouldBe 2
+      val bySubmission = result.map(r => r.submissionId -> r.transactionDetails.map(_.recordId)).toMap
+      bySubmission("sub-A") shouldBe Seq(1, 3)
+      bySubmission("sub-B") shouldBe Seq(2)
 
   "SubmissionTransformer.toSingleRecordRequest" should:
     "map a shares journey using DetailsOfThisTransfer and buyerAddress" in:

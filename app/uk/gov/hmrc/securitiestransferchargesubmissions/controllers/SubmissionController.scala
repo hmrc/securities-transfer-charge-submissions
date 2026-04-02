@@ -20,7 +20,7 @@ import play.api.libs.json.*
 import play.api.mvc.*
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchRequest, TransferItem}
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.{ErrorMessages, SubmissionOutcome, SubmissionService}
 
@@ -38,22 +38,21 @@ class SubmissionController @Inject()(
   // JSON is parsed from the request body, a HeaderCarrier is derived from the
   // request headers, and the result is returned as a JSON array of charges.
 
-  def submitSingleTransferAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
-    request.body.validate[TransferData] match
-      case JsSuccess(data, _) =>
-        submissionService
-          .submitSingleTransfer(data)
-          .map(toHttpResult)
-          .recover(handleClientMappingErrors)
-      case JsError(errors) =>
-        Future.successful(badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors))))
-  }
+  def submitBatchAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
+    request.body.validate[TransferBatchRequest] match
+      case JsSuccess(data, _) if data.transfers.nonEmpty =>
+        val items: Seq[TransferItem] = data.transfers.map { transfer =>
+          TransferItem(
+            transferType = data.transferType,
+            subscriptionId = data.subscriptionId,
+            submissionId = data.submissionId,
+            submitterAffinity = data.submitterAffinity,
+            data = transfer.data
+          )
+        }
 
-  def submitMultipleTransfersAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
-    request.body.validate[Seq[TransferData]] match
-      case JsSuccess(data, _) if data.nonEmpty =>
         submissionService
-          .submitMultipleTransfers(data)
+          .submitMultipleTransfers(items)
           .map(toHttpResult)
           .recover(handleClientMappingErrors)
       case JsSuccess(_, _) =>

@@ -21,7 +21,7 @@ import play.api.libs.json.Reads
 import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferItem, TransferType}
 
 import javax.inject.{Inject, Singleton}
 
@@ -36,14 +36,22 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
    * Groups incoming single-record requests into batches of at most
    * `etmpCreateMaxRecordsPerRequest` and transforms each batch into a
    * multi-record [[StcTransactionCreateRequest]].
+   *
+   * Records are first partitioned by `submissionId` so that no batch ever
+   * mixes records belonging to different submissions.
    */
   def toRequests(
     singles: Seq[StcTransactionCreateSingleRecordRequest]
   ): Seq[StcTransactionCreateRequest] =
     singles
-      .grouped(appConfig.etmpCreateMaxRecordsPerRequest)
+      .groupBy(_.submissionId)
+      .values
       .toSeq
-      .map(toBatchRequest)
+      .flatMap(
+        _.grouped(appConfig.etmpCreateMaxRecordsPerRequest)
+          .toSeq
+          .map(toBatchRequest)
+      )
 
   /**
    * Converts a [[StcTransactionCreateResponse]] back into a per-record
@@ -75,7 +83,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
   /**
    * Converts a single [[TransferData]] into a [[StcTransactionCreateSingleRecordRequest]].
    */
-  def toSingleRecordRequest(recordId: Int, data: TransferData): StcTransactionCreateSingleRecordRequest =
+  def toSingleRecordRequest(recordId: Int, data: TransferItem): StcTransactionCreateSingleRecordRequest =
     val chargingPoint = required(Pages.ChargingPointPage)(data)
     val connectedPersons = required(Pages.ConnectedPersonsPage)(data)
     val sellerName = required(Pages.NameOfSellerPage)(data)
@@ -176,13 +184,13 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private def required[A: Reads](page: Pages[A])(data: TransferData): A =
+  private def required[A: Reads](page: Pages[A])(data: TransferItem): A =
     Pages.getData[A](using summon[Reads[A]])(page)(data)
 
-  private def optional[A: Reads](page: Pages[A])(data: TransferData): Option[A] =
+  private def optional[A: Reads](page: Pages[A])(data: TransferItem): Option[A] =
     (data.data \ page.path).asOpt[A]
 
-  private def buyerAddressFor(data: TransferData): BuyerAddressData =
+  private def buyerAddressFor(data: TransferItem): BuyerAddressData =
     optional(Pages.StfBuyersAddressPage)(data)
       .map(BuyerAddressData.fromAlf)
       .orElse {
