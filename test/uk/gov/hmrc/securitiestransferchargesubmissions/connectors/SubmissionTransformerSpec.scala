@@ -22,7 +22,7 @@ import play.api.Configuration
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferType, YnBoolean}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, ReasonForPurchase, TransferType, YnBoolean}
 
 import java.time.LocalDate
 
@@ -59,7 +59,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
   private val submissionId = "submission-123"
 
   private val declaration = SingleTransferDeclaration(
-    role1 = Some("Individual"),
+    role1 = Some(DeclarationRole.Director),
     role2 = None,
     name = "Declarer",
     addr1 = "addr1",
@@ -96,7 +96,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       contingentDetails = None,
       mainSellerDetails = SingleTransferSellerDetails("seller", "addr1", None, None, None, "AA11AA", "GB"),
       otherSellers = None,
-      mainBuyerDetails = SingleTransferBuyerDetails("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, 1, None),
+      mainBuyerDetails = SingleTransferBuyerDetails("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None),
       otherBuyers = None,
       agentDetails = None
     )
@@ -107,7 +107,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       transactionDetails = recordIds.map { recordId =>
         TransactionDetailsCreate(
           recordId = recordId,
-          transactionType = 1,
+          transactionType = TransferType.STF,
           reasonForPurchase = None,
           descriptionOfSecurity = s"security-$recordId",
           numberOfShares = 1,
@@ -131,7 +131,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       },
       otherSellers = None,
       mainBuyerDetails = recordIds.map { recordId =>
-        BuyerDetailsCreate(recordId, s"buyer-$recordId", "addr1", None, None, None, "AA11AA", "GB", "a@test.com", None, 1, None)
+        BuyerDetailsCreate(recordId, s"buyer-$recordId", "addr1", None, None, None, "AA11AA", "GB", "a@test.com", None, BuyerTaxRate.HalfPercent, None)
       },
       otherBuyers = None,
       agentDetails = None,
@@ -250,6 +250,32 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
       result.size shouldBe 1
       result.head.transactionDetails.map(_.recordId) shouldBe Seq(1, 2, 3)
+
+    "map ReasonForPurchase values to ETMP integer codes" in:
+      val first = singleRecordRequest(1).copy(
+        transactionDetails = singleRecordRequest(1).transactionDetails.copy(
+          reasonForPurchase = Some(ReasonForPurchase.PurchasedForCancellation)
+        )
+      )
+      val second = singleRecordRequest(2).copy(
+        transactionDetails = singleRecordRequest(2).transactionDetails.copy(
+          reasonForPurchase = Some(ReasonForPurchase.PurchasedToPlaceIntoTreasury)
+        )
+      )
+      val third = singleRecordRequest(3).copy(
+        transactionDetails = singleRecordRequest(3).transactionDetails.copy(
+          reasonForPurchase = Some(ReasonForPurchase.Both)
+        )
+      )
+
+      val result = transformerMax3.toRequests(Seq(first, second, third), declaration, submissionId)
+
+      result should have size 1
+      result.head.transactionDetails.map(_.reasonForPurchase) shouldBe Seq(
+        Some(ReasonForPurchase.PurchasedForCancellation),
+        Some(ReasonForPurchase.PurchasedToPlaceIntoTreasury),
+        Some(ReasonForPurchase.Both)
+      )
 
     "return multiple requests for m singles where m is greater than max records per request" in:
       val result = transformerMax3.toRequests((1 to 8).map(singleRecordRequest), declaration, submissionId)

@@ -17,6 +17,10 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
 import play.api.libs.json.{Json, Writes}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.BuyerTaxRate
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.DeclarationRole
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.ReasonForPurchase
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
 
 import java.time.LocalDate
@@ -35,8 +39,8 @@ final case class StcTransactionCreateRequest(
 
 final case class TransactionDetailsCreate(
   recordId: Int,
-  transactionType: Int,
-  reasonForPurchase: Option[Int],
+  transactionType: TransferType,
+  reasonForPurchase: Option[ReasonForPurchase],
   descriptionOfSecurity: String,
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
@@ -90,7 +94,7 @@ final case class BuyerDetailsCreate(
   country: String,
   email: String,
   uniqueId: Option[String],
-  taxRate: Int,
+  taxRate: BuyerTaxRate,
   isPLC: Option[YnBoolean]
 )
 
@@ -115,7 +119,7 @@ final case class AgentDetailsCreate(
 
 final case class DeclarationCreate(
   recordId: Int,
-  role1: Option[String],
+  role1: Option[DeclarationRole],
   role2: Option[String],
   name: String,
   addr1: String,

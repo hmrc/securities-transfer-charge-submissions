@@ -27,7 +27,7 @@ import play.api.libs.json.Json
 import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TransferType, YnBoolean}
 
 import java.time.{Clock, Instant, ZoneId, LocalDate}
 import scala.concurrent.Await
@@ -74,7 +74,7 @@ class SubmissionClientSpec
     submissionId = "sub-123",
     transactionDetails = Seq(TransactionDetailsCreate(
       recordId                      = 1,
-      transactionType               = 1,
+      transactionType               = TransferType.STF,
       reasonForPurchase             = None,
       descriptionOfSecurity         = "Ordinary shares",
       numberOfShares                = 10,
@@ -94,7 +94,7 @@ class SubmissionClientSpec
     contingentDetails = None,
     mainSellerDetails = Seq(SellerDetailsCreate(1, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB")),
     otherSellers      = None,
-    mainBuyerDetails  = Seq(BuyerDetailsCreate(1, "Buyer Ltd", "2 High St", None, None, None, "BB2 2BB", "GB", "buyer@test.com", None, 1, None)),
+    mainBuyerDetails  = Seq(BuyerDetailsCreate(1, "Buyer Ltd", "2 High St", None, None, None, "BB2 2BB", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None)),
     otherBuyers       = None,
     agentDetails      = None,
     declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, YnBoolean.Yes))

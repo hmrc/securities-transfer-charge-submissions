@@ -29,7 +29,7 @@ import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcChargeFailure, StcChargeSuccess}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{SubmissionBatchPayload, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, SubmissionBatchPayload, TransferType}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
 import java.time.LocalDate
@@ -113,7 +113,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         country = "GB",
         email = "buyer@test.com",
         uniqueId = None,
-        taxRate = 1,
+        taxRate = BuyerTaxRate.HalfPercent,
         isPLC = None
       ),
       otherBuyers = None,
@@ -121,7 +121,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
     )
 
   private val declaration = SingleTransferDeclaration(
-    role1 = Some("Individual"),
+    role1 = Some(DeclarationRole.Director),
     role2 = None,
     name = "Seller Ltd",
     addr1 = "seller line 1",

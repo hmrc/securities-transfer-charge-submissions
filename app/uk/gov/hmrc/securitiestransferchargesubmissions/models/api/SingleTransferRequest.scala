@@ -17,6 +17,9 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.models.api
 
 import play.api.libs.json.{Json, Reads, Writes}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.BuyerTaxRate
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.DeclarationRole
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.ReasonForPurchase
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
 
 import java.time.LocalDate
@@ -34,7 +37,7 @@ final case class SingleTransferRequest(
 
 final case class SingleTransferTransactionDetails(
   transactionType: TransferType,
-  reasonForPurchase: Option[Int],
+  reasonForPurchase: Option[ReasonForPurchase],
   descriptionOfSecurity: String,
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
@@ -84,7 +87,7 @@ final case class SingleTransferBuyerDetails(
   country: String,
   email: String,
   uniqueId: Option[String],
-  taxRate: Int,
+  taxRate: BuyerTaxRate,
   isPLC: Option[Boolean]
 )
 
@@ -106,7 +109,7 @@ final case class SingleTransferAgentDetails(
 )
 
 final case class SingleTransferDeclaration(
-  role1: Option[String],
+  role1: Option[DeclarationRole],
   role2: Option[String],
   name: String,
   addr1: String,

@@ -21,7 +21,6 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
 
 import javax.inject.{Inject, Singleton}
 
@@ -99,7 +98,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
         val td = r.transactionDetails
         TransactionDetailsCreate(
           recordId                      = r.recordId,
-          transactionType               = toEtmpTransactionType(td.transactionType),
+          transactionType               = td.transactionType,
           reasonForPurchase             = td.reasonForPurchase,
           descriptionOfSecurity         = td.descriptionOfSecurity,
           numberOfShares                = td.numberOfShares,
@@ -218,11 +217,6 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
       }
     )
 
-  private def toEtmpTransactionType(value: TransferType): Int =
-    value match
-      case TransferType.STF   => 1
-      case TransferType.SH03  => 2
-      case TransferType.Other => 3
 
   private def reconcileProcessedResponse(
     request: StcTransactionCreateRequest,

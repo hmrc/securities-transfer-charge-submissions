@@ -23,7 +23,7 @@ import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, TransferType}
 
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
@@ -38,7 +38,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
   given HeaderCarrier = HeaderCarrier()
 
   private val declaration = SingleTransferDeclaration(
-    role1 = Some("Individual"),
+    role1 = Some(DeclarationRole.Director),
     role2 = None,
     name = "Declarer",
     addr1 = "addr1",
@@ -88,7 +88,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       contingentDetails = None,
       mainSellerDetails = SingleTransferSellerDetails("Seller Ltd", "addr1", None, None, None, "AA11AA", "GB"),
       otherSellers = None,
-      mainBuyerDetails = SingleTransferBuyerDetails("Buyer Ltd", "addr1", None, None, None, "BB11BB", "GB", "buyer@test.com", None, 1, None),
+      mainBuyerDetails = SingleTransferBuyerDetails("Buyer Ltd", "addr1", None, None, None, "BB11BB", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None),
       otherBuyers = None,
       agentDetails = None
     )
