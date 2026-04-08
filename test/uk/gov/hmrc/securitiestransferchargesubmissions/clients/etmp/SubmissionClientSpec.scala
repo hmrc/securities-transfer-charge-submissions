@@ -27,6 +27,7 @@ import play.api.libs.json.Json
 import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
 
 import java.time.{Clock, Instant, ZoneId, LocalDate}
 import scala.concurrent.Await
@@ -84,7 +85,7 @@ class SubmissionClientSpec
       minPricePaid                  = None,
       originalChargingPoint         = LocalDate.parse("2026-03-30"),
       considerationActual           = BigDecimal(1000),
-      isConnectedPartiesTransactions = "N",
+      isConnectedPartiesTransactions = YnBoolean.No,
       companyName                   = "Company Ltd",
       companyRegistrationNumber     = None,
       reliefClaimedName             = None,
@@ -96,7 +97,7 @@ class SubmissionClientSpec
     mainBuyerDetails  = Seq(BuyerDetailsCreate(1, "Buyer Ltd", "2 High St", None, None, None, "BB2 2BB", "GB", "buyer@test.com", None, 1, None)),
     otherBuyers       = None,
     agentDetails      = None,
-    declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, "Y"))
+    declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, YnBoolean.Yes))
   )
 
   private val processedBody = Json.obj(

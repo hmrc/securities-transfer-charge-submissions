@@ -17,39 +17,6 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.models
 
 import play.api.libs.json.*
-import uk.gov.hmrc.auth.core.AffinityGroup
-
-case class TransferData(
-  data: JsObject
-)
-
-object TransferData:
-  given Reads[TransferData] = Json.reads[TransferData]
-
-case class TransferBatchRequest(
-  transferType: TransferType,
-  subscriptionId: String,
-  submissionId: String,
-  submitterAffinity: AffinityGroup,
-  transfers: Seq[TransferData]
-):
-  def context: TransferBatchContext =
-    TransferBatchContext(
-      transferType = transferType,
-      subscriptionId = subscriptionId,
-      submissionId = submissionId,
-      submitterAffinity = submitterAffinity
-    )
-
-object TransferBatchRequest:
-  given Reads[TransferBatchRequest] = Json.reads[TransferBatchRequest]
-
-case class TransferBatchContext(
-  transferType: TransferType,
-  subscriptionId: String,
-  submissionId: String,
-  submitterAffinity: AffinityGroup
-)
 
 enum TransferType:
   case STF, SH03, Other
@@ -57,10 +24,13 @@ enum TransferType:
 object TransferType:
   given Format[TransferType] = Format(
     Reads {
-      case JsNumber(n) => n.toInt match
+      case JsNumber(n) if n.isValidInt => n.toInt match
+        case 1 => JsSuccess(TransferType.STF)
         case 2 => JsSuccess(TransferType.SH03)
         case 3 => JsSuccess(TransferType.Other)
-        case _ => JsSuccess(TransferType.STF)
+        case other => JsError(s"Invalid TransferType value [$other]. Expected one of: 1 (STF), 2 (SH03), 3 (Other)")
+      case JsNumber(n) =>
+        JsError(s"Invalid TransferType number [$n]. Expected an integer value: 1 (STF), 2 (SH03), 3 (Other)")
       case other => JsError(s"Expected a JSON number for TransferType, got: $other")
     },
     Writes {

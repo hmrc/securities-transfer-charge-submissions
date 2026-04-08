@@ -18,6 +18,8 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.services
 
 object ErrorMessages:
   val InvalidTransferData = "invalid transfer data"
+  val MalformedJsonBody = "request body must be valid JSON"
   val EmptyTransferBatch = "at least one transfer must be provided"
+  val DuplicateRecordIds = "recordIds must be unique"
+  val MissingRequiredHeaders = "missing required headers: correlation-id and subscription-id"
   val InvalidRequestCode = "INVALID_REQUEST"
-  val MixedSubscriptionIds = "all transfers in a batch must have the same subscriptionId"

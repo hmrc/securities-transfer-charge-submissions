@@ -14,7 +14,9 @@ Transfer details can be collected from the UI forms and submitted as one or more
 
 Current submission endpoint:
 
-- `POST /submission` with a `TransferBatchRequest` body (`transfers` can contain a single item or many).
+- `POST /submission/:submissionId`
+- headers: `correlation-id`, `subscription-id`
+- body: `SubmissionBatchPayload` containing a single `declaration` plus one or more `transfers`
 
 After submission, transfer details can be viewed and amended if required, although not all fields are amendable.
 

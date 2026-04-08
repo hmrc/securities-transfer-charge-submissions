@@ -20,9 +20,10 @@ import play.api.libs.json.*
 import play.api.mvc.*
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchRequest
+import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConnector
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
-import uk.gov.hmrc.securitiestransferchargesubmissions.services.{ErrorMessages, SubmissionOutcome, SubmissionService}
+import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
@@ -30,39 +31,54 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class SubmissionController @Inject()(
   cc: ControllerComponents,
-  submissionService: SubmissionService
+  submissionConnector: SubmissionConnector
 )(using ec: ExecutionContext) extends BackendController(cc):
 
-
-  // Play action endpoints — these are the methods referenced by the routes file.
-  // JSON is parsed from the request body, a HeaderCarrier is derived from the
-  // request headers, and the result is returned as a JSON array of charges.
-
-  def submitBatchAction: Action[JsValue] = Action.async(parse.json) { implicit request =>
-    request.body.validate[TransferBatchRequest] match
-      case JsSuccess(data, _) if data.transfers.nonEmpty =>
-        submissionService
-          .submitMultipleTransfers(data)
-          .map(toHttpResult)
+  def submitBatchAction(submissionId: String): Action[AnyContent] = Action.async { implicit request =>
+    validateRequest(request) match
+      case Left(result) => Future.successful(result)
+      case Right((correlationId, subscriptionId, payload)) =>
+        submissionConnector
+          .submitTransfers(
+            stcId = subscriptionId,
+            submissionId = submissionId,
+            correlationId = correlationId,
+            declaration = payload.declaration,
+            transfers = payload.transfers
+          )
+          .map(responses => Ok(Json.toJson(responses)))
           .recover(handleClientMappingErrors)
-      case JsSuccess(_, _) =>
-        Future.successful(badRequest(ErrorMessages.EmptyTransferBatch))
-      case JsError(errors) =>
-        Future.successful(badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors))))
   }
 
-  private def toHttpResult(outcome: SubmissionOutcome): Result =
-    outcome match
-      case SubmissionOutcome.Submitted(responses) =>
-        Ok(Json.toJson(responses))
-      case SubmissionOutcome.TransformationFailed(errors) =>
-        badRequest(ErrorMessages.InvalidTransferData, Some(Json.toJson(errors)))
+  private def validateRequest(
+    request: Request[AnyContent]
+  ): Either[Result, (String, String, SubmissionBatchPayload)] =
+    for
+      correlationId <- headerValue(request, "correlation-id").toRight(badRequest(ErrorMessages.MissingRequiredHeaders))
+      subscriptionId <- headerValue(request, "subscription-id").toRight(badRequest(ErrorMessages.MissingRequiredHeaders))
+      body <- request.body.asJson.toRight(badRequest(ErrorMessages.InvalidTransferData, Some(malformedJsonDetails)))
+      payload <- body.validate[SubmissionBatchPayload].asEither.left.map(errors =>
+        badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors)))
+      )
+      _ <- Either.cond(payload.transfers.nonEmpty, (), badRequest(ErrorMessages.EmptyTransferBatch))
+      _ <- Either.cond(hasUniqueRecordIds(payload), (), badRequest(ErrorMessages.DuplicateRecordIds))
+    yield (correlationId, subscriptionId, payload)
+
+  private def hasUniqueRecordIds(payload: SubmissionBatchPayload): Boolean =
+    val recordIds = payload.transfers.map(_.recordId)
+    recordIds.distinct.size == recordIds.size
+
+  private def headerValue(request: RequestHeader, name: String): Option[String] =
+    request.headers.get(name).map(_.trim).filter(_.nonEmpty)
+
+  private def malformedJsonDetails: JsObject =
+    Json.obj("message" -> ErrorMessages.MalformedJsonBody)
 
   private def badRequest(error: String, details: Option[JsValue] = None): Result =
-    BadRequest(Json.toJson(ApiErrorResponse(error = error, details = details)))
+    BadRequest(ApiErrorResponse.asJson(error = error, details = details))
 
   private def handleClientMappingErrors: PartialFunction[Throwable, Result] =
     case e: JsResultException =>
       badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(e.errors)))
-    case e: IllegalArgumentException =>
-      badRequest(e.getMessage)
+    case _: IllegalArgumentException =>
+      badRequest(ErrorMessages.InvalidTransferData)

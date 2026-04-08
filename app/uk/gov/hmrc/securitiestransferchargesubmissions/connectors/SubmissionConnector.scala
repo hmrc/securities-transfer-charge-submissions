@@ -20,6 +20,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.SubmissionCl
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateRequest
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
 import uk.gov.hmrc.http.HeaderCarrier
 
 import javax.inject.{Inject, Singleton}
@@ -38,8 +39,10 @@ trait SubmissionConnector:
    */
   def submitTransfers(
     stcId: String,
+    submissionId: String,
     correlationId: String,
-    transfers: Seq[StcTransactionCreateSingleRecordRequest]
+    declaration: SingleTransferDeclaration,
+    transfers: Seq[SingleTransferRequest]
   )(using HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]]
 
 @Singleton
@@ -57,12 +60,23 @@ class SubmissionConnectorImpl @Inject()(
 
   override def submitTransfers(
     stcId: String,
+    submissionId: String,
     correlationId: String,
-    transfers: Seq[StcTransactionCreateSingleRecordRequest]
+    declaration: SingleTransferDeclaration,
+    transfers: Seq[SingleTransferRequest]
+  )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
+    submitTransfersInternal(stcId, submissionId, correlationId, declaration, transfers)
+
+  private def submitTransfersInternal(
+    stcId: String,
+    submissionId: String,
+    correlationId: String,
+    declaration: SingleTransferDeclaration,
+    transfers: Seq[SingleTransferRequest]
   )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
     require(transfers.nonEmpty, "transfers must not be empty")
 
-    val requests = transformer.toRequests(transfers)
+    val requests = transformer.toRequests(transfers, declaration, submissionId)
     val requestChunks = requests.grouped(maxConcurrentCalls).toSeq
 
     submitChunks(stcId, correlationId, requestChunks)

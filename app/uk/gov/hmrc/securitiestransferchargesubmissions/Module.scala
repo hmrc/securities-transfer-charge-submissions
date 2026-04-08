@@ -20,8 +20,6 @@ import play.api.{Configuration, Environment}
 import play.api.inject.{Binding, Module => AppModule}
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{SubmissionClient, SubmissionClientImpl}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{SubmissionConnector, SubmissionConnectorImpl}
-import uk.gov.hmrc.securitiestransferchargesubmissions.services.{SubmissionService, SubmissionServiceImpl}
-import uk.gov.hmrc.securitiestransferchargesubmissions.validation.{TransferTransformationValidator, TransferTransformationValidatorImpl}
 
 import java.time.Clock
 
@@ -34,6 +32,4 @@ class Module extends AppModule:
     bind[Clock].toInstance(Clock.systemDefaultZone) ::
     bind[SubmissionClient].to[SubmissionClientImpl] ::
     bind[SubmissionConnector].to[SubmissionConnectorImpl] ::
-    bind[TransferTransformationValidator].to[TransferTransformationValidatorImpl] ::
-    bind[SubmissionService].to[SubmissionServiceImpl] ::
     Nil

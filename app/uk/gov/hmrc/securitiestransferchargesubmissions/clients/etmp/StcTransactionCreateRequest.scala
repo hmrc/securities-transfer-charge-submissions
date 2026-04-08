@@ -17,6 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
 import play.api.libs.json.{Json, Writes}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
 
 import java.time.LocalDate
 
@@ -40,12 +41,12 @@ final case class TransactionDetailsCreate(
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
   marketValue: Option[BigDecimal],
-  qualifyAsTreasuryShares: Option[String],
+  qualifyAsTreasuryShares: Option[YnBoolean],
   maxPricePaid: Option[BigDecimal],
   minPricePaid: Option[BigDecimal],
   originalChargingPoint: LocalDate,
   considerationActual: BigDecimal,
-  isConnectedPartiesTransactions: String,
+  isConnectedPartiesTransactions: YnBoolean,
   companyName: String,
   companyRegistrationNumber: Option[String],
   reliefClaimedName: Option[String],
@@ -55,10 +56,10 @@ final case class TransactionDetailsCreate(
 final case class ContingentDetailsCreate(
   recordId: Int,
   provisionalDate: LocalDate,
-  isAmountUnasertainable: String,
+  isAmountUnasertainable: YnBoolean,
   unascertainableAmount: Option[BigDecimal],
   ascertainableAmount: Option[BigDecimal],
-  defermentOfPayment: String,
+  defermentOfPayment: YnBoolean,
   originalDefermentDate: Option[LocalDate]
 )
 
@@ -90,7 +91,7 @@ final case class BuyerDetailsCreate(
   email: String,
   uniqueId: Option[String],
   taxRate: Int,
-  isPLC: Option[String]
+  isPLC: Option[YnBoolean]
 )
 
 final case class OtherBuyerCreateName(
@@ -123,8 +124,8 @@ final case class DeclarationCreate(
   addr4: Option[String],
   postcode: String,
   country: String,
-  selfDeclarationAgent: Option[String],
-  isCorrectInfo: String
+  selfDeclarationAgent: Option[YnBoolean],
+  isCorrectInfo: YnBoolean
 )
 
 object StcTransactionCreateRequest:

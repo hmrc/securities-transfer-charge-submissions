@@ -19,11 +19,10 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import play.api.Configuration
-import play.api.libs.json.{JsNull, JsObject, JsResultException, Json}
-import uk.gov.hmrc.auth.core.AffinityGroup
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferBatchContext, TransferData, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{TransferType, YnBoolean}
 
 import java.time.LocalDate
 
@@ -57,26 +56,27 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
   private val transformerMax3 = new SubmissionTransformer(appConfigMax3)
 
-  private def context(affinity: AffinityGroup, transferType: TransferType = TransferType.STF): TransferBatchContext =
-    TransferBatchContext(
-      transferType = transferType,
-      subscriptionId = "sub-123",
-      submissionId = "submission-123",
-      submitterAffinity = affinity
-    )
+  private val submissionId = "submission-123"
 
-  private def transferData(data: JsObject): TransferData =
-    TransferData(data)
+  private val declaration = SingleTransferDeclaration(
+    role1 = Some("Individual"),
+    role2 = None,
+    name = "Declarer",
+    addr1 = "addr1",
+    addr2 = None,
+    addr3 = None,
+    addr4 = None,
+    postcode = "AA11AA",
+    country = "GB",
+    selfDeclarationAgent = None,
+    isCorrectInfo = true
+  )
 
-  private def singleRecordRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
-    singleRecordRequestWithSubmissionId(recordId, "submission-123")
-
-  private def singleRecordRequestWithSubmissionId(recordId: Int, submissionId: String): StcTransactionCreateSingleRecordRequest =
-    StcTransactionCreateSingleRecordRequest(
+  private def singleRecordRequest(recordId: Int): SingleTransferRequest =
+    SingleTransferRequest(
       recordId = recordId,
-      submissionId = submissionId,
-      transactionDetails = TransactionDetailsCreateSingleRecord(
-        transactionType = 1,
+      transactionDetails = SingleTransferTransactionDetails(
+        transactionType = TransferType.STF,
         reasonForPurchase = None,
         descriptionOfSecurity = s"security-$recordId",
         numberOfShares = 1,
@@ -87,56 +87,19 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         minPricePaid = None,
         originalChargingPoint = LocalDate.parse("2026-03-30"),
         considerationActual = BigDecimal(100),
-        isConnectedPartiesTransactions = "N",
+        isConnectedPartiesTransactions = false,
         companyName = "company",
         companyRegistrationNumber = None,
         reliefClaimedName = None,
         reliefPercentage = None
       ),
       contingentDetails = None,
-      mainSellerDetails = SellerDetailsCreateSingleRecord("seller", "addr1", None, None, None, "AA11AA", "GB"),
+      mainSellerDetails = SingleTransferSellerDetails("seller", "addr1", None, None, None, "AA11AA", "GB"),
       otherSellers = None,
-      mainBuyerDetails = BuyerDetailsCreateSingleRecord("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, 1, None),
+      mainBuyerDetails = SingleTransferBuyerDetails("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, 1, None),
       otherBuyers = None,
-      agentDetails = None,
-      declaration = DeclarationCreateSingleRecord(None, None, "declarer", "addr1", None, None, None, "AA11AA", "GB", None, "Y")
+      agentDetails = None
     )
-
-  private val baseSellerAddress = Json.obj(
-    "auditRef" -> "audit-ref",
-    "id" -> "alf-id",
-    "address" -> Json.obj(
-      "lines" -> Json.arr("seller line 1", "seller line 2"),
-      "postcode" -> "ZZ11ZZ",
-      "country" -> Json.obj("name" -> "United Kingdom", "code" -> "GB")
-    )
-  )
-
-  private val baseBuyerAlfAddress = Json.obj(
-    "auditRef" -> "buyer-audit-ref",
-    "id" -> "buyer-alf-id",
-    "address" -> Json.obj(
-      "lines" -> Json.arr("buyer line 1", "buyer line 2"),
-      "postcode" -> "AA11AA",
-      "country" -> Json.obj("name" -> "United Kingdom", "code" -> "GB")
-    )
-  )
-
-  private val baseConfirmableAddress = Json.obj(
-    "lines" -> Json.arr("confirmed buyer line 1", "confirmed buyer line 2"),
-    "postcode" -> "BB22BB",
-    "country" -> Json.obj("name" -> "United Kingdom", "code" -> "GB")
-  )
-
-  private val commonPages = Json.obj(
-    "chargingPoint" -> "2026-03-30",
-    "connectedPersons" -> false,
-    "nameOfSeller" -> "Seller Ltd",
-    "sellerAddress" -> baseSellerAddress,
-    "securitiesTarget" -> Json.obj("businessName" -> "Buyer Ltd", "crn" -> "CRN123"),
-    "applyingForRelief" -> false,
-    "taxRate" -> "half"
-  )
 
   private def requestWithRecordIds(recordIds: Int*): StcTransactionCreateRequest =
     StcTransactionCreateRequest(
@@ -155,7 +118,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
           minPricePaid = None,
           originalChargingPoint = LocalDate.parse("2026-03-30"),
           considerationActual = BigDecimal(100),
-          isConnectedPartiesTransactions = "N",
+          isConnectedPartiesTransactions = YnBoolean.No,
           companyName = "company",
           companyRegistrationNumber = None,
           reliefClaimedName = None,
@@ -173,7 +136,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       otherBuyers = None,
       agentDetails = None,
       declaration = recordIds.map { recordId =>
-        DeclarationCreate(recordId, None, None, s"name-$recordId", "addr1", None, None, None, "AA11AA", "GB", None, "Y")
+        DeclarationCreate(recordId, None, None, s"name-$recordId", "addr1", None, None, None, "AA11AA", "GB", None, YnBoolean.Yes)
       }
     )
 
@@ -272,22 +235,24 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
   "SubmissionTransformer.toRequests" should:
     "return one request when given one single-record request" in:
-      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1)))
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1)), declaration, submissionId)
 
       result.size shouldBe 1
       result.head.transactionDetails.map(_.recordId) shouldBe Seq(1)
+      result.head.transactionDetails.map(_.isConnectedPartiesTransactions) shouldBe Seq(YnBoolean.No)
       result.head.mainSellerDetails.map(_.recordId) shouldBe Seq(1)
       result.head.mainBuyerDetails.map(_.recordId) shouldBe Seq(1)
       result.head.declaration.map(_.recordId) shouldBe Seq(1)
+      result.head.declaration.map(_.isCorrectInfo) shouldBe Seq(YnBoolean.Yes)
 
     "return one request for n singles where n is less than or equal to max records per request" in:
-      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2), singleRecordRequest(3)))
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2), singleRecordRequest(3)), declaration, submissionId)
 
       result.size shouldBe 1
       result.head.transactionDetails.map(_.recordId) shouldBe Seq(1, 2, 3)
 
     "return multiple requests for m singles where m is greater than max records per request" in:
-      val result = transformerMax3.toRequests((1 to 8).map(singleRecordRequest))
+      val result = transformerMax3.toRequests((1 to 8).map(singleRecordRequest), declaration, submissionId)
 
       result.size shouldBe 3
       result.map(_.transactionDetails.map(_.recordId)) shouldBe Seq(
@@ -295,173 +260,3 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         Seq(4, 5, 6),
         Seq(7, 8)
       )
-
-
-  "SubmissionTransformer.toSingleRecordRequest" should:
-    "map a shares journey using DetailsOfThisTransfer and buyerAddress" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "buyerAddress" -> baseBuyerAlfAddress,
-          "whatTypeOfSecurities" -> "shares",
-          "detailsOfThisTransfer" -> Json.obj(
-            "numberOfShares" -> "10",
-            "typeOfShares" -> "Ordinary shares",
-            "amountPaid" -> BigDecimal(1500),
-            "marketValue" -> BigDecimal(2000)
-          )
-        )
-      )
-
-      val result = transformer.toSingleRecordRequest(recordId = 7, context = context(AffinityGroup.Organisation), data = data)
-
-      result.recordId shouldBe 7
-      result.transactionDetails.descriptionOfSecurity shouldBe "Ordinary shares"
-      result.transactionDetails.numberOfShares shouldBe 10
-      result.transactionDetails.considerationActual shouldBe BigDecimal(1500)
-      result.transactionDetails.marketValue shouldBe Some(BigDecimal(2000))
-      result.mainBuyerDetails.addr1 shouldBe "buyer line 1"
-
-    "map an other-securities connected-persons journey and require totalMarketValue" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "buyerAddress" -> baseBuyerAlfAddress,
-          "connectedPersons" -> true,
-          "taxRate" -> "oneAndHalf",
-          "whatTypeOfSecurities" -> "other",
-          "otherSecuritiesType" -> "Preference units",
-          "amountPaidForSecurities" -> BigDecimal(2500),
-          "totalMarketValuePage" -> BigDecimal(3000)
-        )
-      )
-
-      val result = transformer.toSingleRecordRequest(recordId = 8, context = context(AffinityGroup.Organisation), data = data)
-
-      result.transactionDetails.descriptionOfSecurity shouldBe "Preference units"
-      result.transactionDetails.numberOfShares shouldBe 0
-      result.transactionDetails.considerationActual shouldBe BigDecimal(2500)
-      result.transactionDetails.marketValue shouldBe Some(BigDecimal(3000))
-      result.mainBuyerDetails.taxRate shouldBe 2
-
-    "throw a JsResultException when connected persons + other securities is missing totalMarketValuePage" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "buyerAddress" -> baseBuyerAlfAddress,
-          "connectedPersons" -> true,
-          "whatTypeOfSecurities" -> "other",
-          "otherSecuritiesType" -> "Preference units",
-          "amountPaidForSecurities" -> BigDecimal(2500)
-        )
-      )
-
-      val thrown = the[JsResultException] thrownBy transformer.toSingleRecordRequest(
-        recordId = 11,
-        context = context(AffinityGroup.Organisation),
-        data = data
-      )
-      thrown.errors.toString should include("totalMarketValuePage")
-
-    "fallback to confirmedAddress when buyerAddress is missing" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "confirmedAddress" -> baseConfirmableAddress,
-          "whatTypeOfSecurities" -> "shares",
-          "detailsOfThisTransfer" -> Json.obj(
-            "numberOfShares" -> "2",
-            "typeOfShares" -> "Class A",
-            "amountPaid" -> BigDecimal(99),
-            "marketValue" -> JsNull
-          )
-        )
-      )
-
-      val result = transformer.toSingleRecordRequest(recordId = 9, context = context(AffinityGroup.Individual), data = data)
-
-      result.mainBuyerDetails.addr1 shouldBe "confirmed buyer line 1"
-      result.mainBuyerDetails.postcode shouldBe "BB22BB"
-      result.mainBuyerDetails.country shouldBe "GB"
-
-    "throw an IllegalArgumentException when both buyerAddress and confirmedAddress are missing" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "whatTypeOfSecurities" -> "shares",
-          "detailsOfThisTransfer" -> Json.obj(
-            "numberOfShares" -> "1",
-            "typeOfShares" -> "Ordinary",
-            "amountPaid" -> BigDecimal(1),
-            "marketValue" -> JsNull
-          )
-        )
-      )
-
-      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(
-        recordId = 10,
-        context = context(AffinityGroup.Individual),
-        data = data
-      )
-      thrown.getMessage should include("buyerAddress or confirmedAddress")
-
-    "set reliefClaimedName when applyingForRelief is true and a relief is provided" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "buyerAddress" -> baseBuyerAlfAddress,
-          "applyingForRelief" -> true,
-          "whatReliefAreYouApplyingFor" -> "groupRelief",
-          "whatTypeOfSecurities" -> "shares",
-          "detailsOfThisTransfer" -> Json.obj(
-            "numberOfShares" -> "5",
-            "typeOfShares" -> "Ordinary",
-            "amountPaid" -> BigDecimal(500),
-            "marketValue" -> JsNull
-          )
-        )
-      )
-
-      val result = transformer.toSingleRecordRequest(recordId = 12, context = context(AffinityGroup.Organisation), data = data)
-      result.transactionDetails.reliefClaimedName shouldBe Some("groupRelief")
-
-    "map TransferType.SH03 and TransferType.Other to transaction types 2 and 3" in:
-      val baseData = commonPages ++ Json.obj(
-        "buyerAddress" -> baseBuyerAlfAddress,
-        "whatTypeOfSecurities" -> "shares",
-        "detailsOfThisTransfer" -> Json.obj(
-          "numberOfShares" -> "1",
-          "typeOfShares" -> "Ordinary",
-          "amountPaid" -> BigDecimal(1),
-          "marketValue" -> JsNull
-        )
-      )
-
-      val sh03 = transformer.toSingleRecordRequest(
-        recordId = 13,
-        context = context(AffinityGroup.Organisation, TransferType.SH03),
-        data = transferData(baseData)
-      )
-      val other = transformer.toSingleRecordRequest(
-        recordId = 14,
-        context = context(AffinityGroup.Organisation, TransferType.Other),
-        data = transferData(baseData)
-      )
-
-      sh03.transactionDetails.transactionType shouldBe 2
-      other.transactionDetails.transactionType shouldBe 3
-
-    "throw an IllegalArgumentException when numberOfShares is not an integer" in:
-      val data = transferData(
-        commonPages ++ Json.obj(
-          "buyerAddress" -> baseBuyerAlfAddress,
-          "whatTypeOfSecurities" -> "shares",
-          "detailsOfThisTransfer" -> Json.obj(
-            "numberOfShares" -> "abc",
-            "typeOfShares" -> "Ordinary",
-            "amountPaid" -> BigDecimal(100),
-            "marketValue" -> JsNull
-          )
-        )
-      )
-
-      val thrown = the[IllegalArgumentException] thrownBy transformer.toSingleRecordRequest(
-        recordId = 15,
-        context = context(AffinityGroup.Organisation),
-        data = data
-      )
-      thrown.getMessage should include("Unable to parse numberOfShares")

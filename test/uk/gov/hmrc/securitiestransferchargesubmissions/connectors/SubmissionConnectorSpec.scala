@@ -22,6 +22,8 @@ import play.api.Configuration
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
 
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,6 +36,20 @@ import scala.collection.mutable.ArrayBuffer
 class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
 
   given HeaderCarrier = HeaderCarrier()
+
+  private val declaration = SingleTransferDeclaration(
+    role1 = Some("Individual"),
+    role2 = None,
+    name = "Declarer",
+    addr1 = "addr1",
+    addr2 = None,
+    addr3 = None,
+    addr4 = None,
+    postcode = "AA11AA",
+    country = "GB",
+    selfDeclarationAgent = None,
+    isCorrectInfo = true
+  )
 
   private def appConfig(maxRecordsPerRequest: Int, maxConcurrentCalls: Int = 1): AppConfig =
     new AppConfig(
@@ -48,12 +64,11 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       )
     )
 
-  private def singleRequest(recordId: Int): StcTransactionCreateSingleRecordRequest =
-    StcTransactionCreateSingleRecordRequest(
+  private def singleRequest(recordId: Int): SingleTransferRequest =
+    SingleTransferRequest(
       recordId = recordId,
-      submissionId = "submission-123",
-      transactionDetails = TransactionDetailsCreateSingleRecord(
-        transactionType = 1,
+      transactionDetails = SingleTransferTransactionDetails(
+        transactionType = TransferType.STF,
         reasonForPurchase = None,
         descriptionOfSecurity = s"security-$recordId",
         numberOfShares = 10,
@@ -64,19 +79,18 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
         minPricePaid = None,
         originalChargingPoint = LocalDate.parse("2026-03-30"),
         considerationActual = BigDecimal(100),
-        isConnectedPartiesTransactions = "N",
+        isConnectedPartiesTransactions = false,
         companyName = "Buyer Ltd",
         companyRegistrationNumber = None,
         reliefClaimedName = None,
         reliefPercentage = None
       ),
       contingentDetails = None,
-      mainSellerDetails = SellerDetailsCreateSingleRecord("Seller Ltd", "addr1", None, None, None, "AA11AA", "GB"),
+      mainSellerDetails = SingleTransferSellerDetails("Seller Ltd", "addr1", None, None, None, "AA11AA", "GB"),
       otherSellers = None,
-      mainBuyerDetails = BuyerDetailsCreateSingleRecord("Buyer Ltd", "addr1", None, None, None, "BB11BB", "GB", "buyer@test.com", None, 1, None),
+      mainBuyerDetails = SingleTransferBuyerDetails("Buyer Ltd", "addr1", None, None, None, "BB11BB", "GB", "buyer@test.com", None, 1, None),
       otherBuyers = None,
-      agentDetails = None,
-      declaration = DeclarationCreateSingleRecord(None, None, "Declarer", "addr1", None, None, None, "AA11AA", "GB", None, "Y")
+      agentDetails = None
     )
 
   private def connectorWithStubClient(maxRecordsPerRequest: Int): (SubmissionConnectorImpl, AtomicInteger, ArrayBuffer[Int]) =
@@ -113,13 +127,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
           )
         )
 
-    val transformer = new SubmissionTransformer(cfg):
-      override def toSingleRecordRequest(
-        recordId: Int,
-        context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
-        data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
-      ): StcTransactionCreateSingleRecordRequest =
-        fail("not used in this test")
+    val transformer = new SubmissionTransformer(cfg)
 
     (new SubmissionConnectorImpl(submissionClient, transformer, cfg), callCount, batchSizes)
 
@@ -153,13 +161,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
           )
         }.andThen { case _ => inFlight.decrementAndGet() }
 
-    val transformer = new SubmissionTransformer(cfg):
-      override def toSingleRecordRequest(
-        recordId: Int,
-        context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
-        data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
-      ): StcTransactionCreateSingleRecordRequest =
-        fail("not used in this test")
+    val transformer = new SubmissionTransformer(cfg)
 
     (new SubmissionConnectorImpl(submissionClient, transformer, cfg), maxObserved)
 
@@ -167,7 +169,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
     "reject an empty transfer sequence" in:
       val (connector, callCount, _) = connectorWithStubClient(maxRecordsPerRequest = 3)
       val exception = the[IllegalArgumentException] thrownBy {
-        connector.submitTransfers("stcId", "correlationId", Seq.empty)
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, Seq.empty)
       }
 
       exception.getMessage should include("transfers must not be empty")
@@ -177,7 +179,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val (connector, callCount, batchSizes) = connectorWithStubClient(maxRecordsPerRequest = 3)
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", Seq(singleRequest(1))),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, Seq(singleRequest(1))),
         5.seconds
       )
 
@@ -190,7 +192,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val transfers = Seq(singleRequest(1), singleRequest(2), singleRequest(3))
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
@@ -204,7 +206,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val transfers = (1 to 8).map(singleRequest)
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
@@ -222,7 +224,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val transfers = (1 to 8).map(singleRequest)
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
@@ -238,7 +240,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val transfers = (1 to 6).map(singleRequest)
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
@@ -270,19 +272,13 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
               )
             )
 
-      val transformer = new SubmissionTransformer(cfg):
-        override def toSingleRecordRequest(
-          recordId: Int,
-          context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
-          data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
-        ): StcTransactionCreateSingleRecordRequest =
-          fail("not used in this test")
+      val transformer = new SubmissionTransformer(cfg)
 
       val connector = new SubmissionConnectorImpl(submissionClient, transformer, cfg)
       val transfers = (1 to 5).map(singleRequest)
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
@@ -317,19 +313,13 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
             )
           }
 
-      val transformer = new SubmissionTransformer(cfg):
-        override def toSingleRecordRequest(
-          recordId: Int,
-          context: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferBatchContext,
-          data: uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferData
-        ): StcTransactionCreateSingleRecordRequest =
-          fail("not used in this test")
+      val transformer = new SubmissionTransformer(cfg)
 
       val connector = new SubmissionConnectorImpl(submissionClient, transformer, cfg)
       val transfers = Seq(singleRequest(1), singleRequest(2), singleRequest(3))
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "correlationId", transfers),
+        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
         5.seconds
       )
 
