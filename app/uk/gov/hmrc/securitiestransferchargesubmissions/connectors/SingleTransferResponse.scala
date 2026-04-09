@@ -20,4 +20,4 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcCharge
 
 // A single-record response is exactly an StcCharge — either StcChargeSuccess or StcChargeFailure,
 // both of which carry the recordId that ties the response back to the originating request.
-type StcTransactionCreateSingleRecordResponse = StcCharge
+type SingleTransferResponse = StcCharge

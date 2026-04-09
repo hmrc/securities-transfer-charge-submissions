@@ -59,7 +59,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
 
   /**
    * Converts a [[StcTransactionCreateResponse]] back into a per-record
-   * sequence of [[StcTransactionCreateSingleRecordResponse]].
+   * sequence of [[SingleTransferResponse]].
    *
    * For a successful 2XX response, all charges matching the requested
    * recordIds are returned to the caller in request order. Any extra
@@ -72,10 +72,10 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
    * synthesised for every record in the originating request so that the
    * caller always receives one response entry per submitted record.
    */
-  def toSingleRecordResponses(
+  def toSingleTransferResponses(
     request: StcTransactionCreateRequest,
     response: StcTransactionCreateResponse
-  ): Seq[StcTransactionCreateSingleRecordResponse] =
+  ): Seq[SingleTransferResponse] =
     response match
       case StcTransactionCreateProcessed(body) =>
         reconcileProcessedResponse(request, body.charges)
@@ -221,7 +221,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
   private def reconcileProcessedResponse(
     request: StcTransactionCreateRequest,
     charges: Seq[StcCharge]
-  ): Seq[StcTransactionCreateSingleRecordResponse] =
+  ): Seq[SingleTransferResponse] =
     val expectedRecordIds = request.transactionDetails.map(_.recordId)
     val expectedRecordIdSet = expectedRecordIds.toSet
 

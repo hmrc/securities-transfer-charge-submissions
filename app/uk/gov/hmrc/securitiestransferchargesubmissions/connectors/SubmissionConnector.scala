@@ -32,7 +32,7 @@ trait SubmissionConnector:
    *
    * Contract:
    *   - Input `transfers` is expected to be non-empty and already validated/transformed.
-   *   - Returns exactly one single-record response per input transfer.
+   *   - Returns exactly one single-transfer response per input transfer.
    *   - For downstream submission failures, synthetic [[StcChargeFailure]] responses are produced so
    *     the one-response-per-input invariant is preserved.
    *   - Response ordering is not guaranteed; callers should correlate by `recordId`.
@@ -43,7 +43,7 @@ trait SubmissionConnector:
     correlationId: String,
     declaration: SingleTransferDeclaration,
     transfers: Seq[SingleTransferRequest]
-  )(using HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]]
+  )(using HeaderCarrier): Future[Seq[SingleTransferResponse]]
 
 @Singleton
 class SubmissionConnectorImpl @Inject()(
@@ -52,8 +52,8 @@ class SubmissionConnectorImpl @Inject()(
   appConfig: AppConfig
 )(using ec: ExecutionContext) extends SubmissionConnector:
 
-  private type SingleRecordResponses = Seq[StcTransactionCreateSingleRecordResponse]
-  private type ChunkResponses = Seq[SingleRecordResponses]
+  private type SingleTransferResponses = Seq[SingleTransferResponse]
+  private type ChunkResponses = Seq[SingleTransferResponses]
 
   private val FailedSubmissionErrorCode = "500"
   private val FailedSubmissionErrorText = "Failed to submit transfer to ETMP"
@@ -64,7 +64,7 @@ class SubmissionConnectorImpl @Inject()(
     correlationId: String,
     declaration: SingleTransferDeclaration,
     transfers: Seq[SingleTransferRequest]
-  )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
+  )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
     submitTransfersInternal(stcId, submissionId, correlationId, declaration, transfers)
 
   private def submitTransfersInternal(
@@ -73,7 +73,7 @@ class SubmissionConnectorImpl @Inject()(
     correlationId: String,
     declaration: SingleTransferDeclaration,
     transfers: Seq[SingleTransferRequest]
-  )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
+  )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
     require(transfers.nonEmpty, "transfers must not be empty")
 
     val requests = transformer.toRequests(transfers, declaration, submissionId)
@@ -90,7 +90,7 @@ class SubmissionConnectorImpl @Inject()(
     correlationId: String,
     requestChunks: Seq[Seq[StcTransactionCreateRequest]]
   )(using hc: HeaderCarrier): Future[ChunkResponses] =
-    requestChunks.foldLeft(Future.successful(Seq.empty[SingleRecordResponses])) {
+    requestChunks.foldLeft(Future.successful(Seq.empty[SingleTransferResponses])) {
       (accResponsesF, requestChunk) =>
         for {
           accResponses <- accResponsesF
@@ -109,20 +109,20 @@ class SubmissionConnectorImpl @Inject()(
     stcId: String,
     correlationId: String,
     request: StcTransactionCreateRequest
-  )(using hc: HeaderCarrier): Future[SingleRecordResponses] =
+  )(using hc: HeaderCarrier): Future[SingleTransferResponses] =
     client
       .submitTransfer(stcId, correlationId, request)
-      .map(response => transformer.toSingleRecordResponses(request, response))
+      .map(response => transformer.toSingleTransferResponses(request, response))
       .recover(recoverSubmissionFailure(request))
 
   private def recoverSubmissionFailure(
     request: StcTransactionCreateRequest
-  ): PartialFunction[Throwable, SingleRecordResponses] =
+  ): PartialFunction[Throwable, SingleTransferResponses] =
     case _ => failedResponsesFor(request)
 
   private def failedResponsesFor(
     request: StcTransactionCreateRequest
-  ): SingleRecordResponses =
+  ): SingleTransferResponses =
     request.transactionDetails.map(td =>
       StcChargeFailure(
         recordId = td.recordId,

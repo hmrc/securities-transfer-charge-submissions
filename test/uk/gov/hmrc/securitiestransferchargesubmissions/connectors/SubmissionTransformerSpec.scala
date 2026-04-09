@@ -140,7 +140,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       }
     )
 
-  "SubmissionTransformer.toSingleRecordResponses" should:
+  "SubmissionTransformer.toSingleTransferResponses" should:
     "return all processed responses for matching recordIds in request order" in:
       val request = requestWithRecordIds(1, 2)
       val response = StcTransactionCreateProcessed(
@@ -153,7 +153,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeSuccess(1, "utrn-1", "desc", "ref-1", "type", BigDecimal(10), "2026-04-30"),
         StcChargeSuccess(2, "utrn-2", "desc", "ref-2", "type", BigDecimal(20), "2026-04-30")
       )
@@ -171,7 +171,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeSuccess(1, "utrn-1a", "desc", "ref-1a", "type", BigDecimal(10), "2026-04-30"),
         StcChargeSuccess(1, "utrn-1b", "desc", "ref-1b", "type", BigDecimal(15), "2026-05-30"),
         StcChargeSuccess(2, "utrn-2", "desc", "ref-2", "type", BigDecimal(20), "2026-04-30")
@@ -190,7 +190,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeSuccess(1, "utrn-1", "desc", "ref-1", "type", BigDecimal(10), "2026-04-30"),
         StcChargeSuccess(2, "utrn-2", "desc", "ref-2", "type", BigDecimal(20), "2026-04-30")
       )
@@ -206,7 +206,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         )
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeSuccess(1, "utrn-1", "desc", "ref-1", "type", BigDecimal(10), "2026-04-30"),
         StcChargeFailure(2, "INTERNAL_SERVER_ERROR", "ETMP did not return a processed response for this record")
       )
@@ -217,7 +217,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         StcTransactionCreateBadRequestBody("400", "Bad request", "log-id")
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeFailure(1, "400", "Bad request"),
         StcChargeFailure(2, "400", "Bad request")
       )
@@ -228,7 +228,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
         StcTransactionCreateBusinessErrorBody("2026-03-30T12:00:00Z", "037", "Main Buyer Details Invalid")
       )
 
-      transformer.toSingleRecordResponses(request, response) shouldBe Seq(
+      transformer.toSingleTransferResponses(request, response) shouldBe Seq(
         StcChargeFailure(1, "037", "Main Buyer Details Invalid"),
         StcChargeFailure(2, "037", "Main Buyer Details Invalid")
       )

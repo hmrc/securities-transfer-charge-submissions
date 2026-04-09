@@ -52,7 +52,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       correlationId: String,
       declaration: SingleTransferDeclaration,
       transfers: Seq[SingleTransferRequest]
-    )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
+    )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
       Future.successful(Seq(
         StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
       ))
@@ -65,7 +65,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       correlationId: String,
       declaration: SingleTransferDeclaration,
       transfers: Seq[SingleTransferRequest]
-    )(using hc: HeaderCarrier): Future[Seq[StcTransactionCreateSingleRecordResponse]] =
+    )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
       Future.successful(Seq(StcChargeFailure(1, "400", "bad input")))
 
   private val controller = new SubmissionController(controllerComponents, successConnector)
