@@ -32,9 +32,11 @@ trait SubmissionConnector:
    *
    * Contract:
    *   - Input `transfers` is expected to be non-empty and already validated/transformed.
-   *   - Returns exactly one single-transfer response per input transfer.
+   *   - Returns at least one single-transfer response per input transfer.
+   *   - Successful submissions may produce more than one response for an input transfer when ETMP
+   *     returns multiple charges for the same `recordId`.
    *   - For downstream submission failures, synthetic [[StcChargeFailure]] responses are produced so
-   *     the one-response-per-input invariant is preserved.
+   *     that at least one response is returned for each input transfer.
    *   - Response ordering is not guaranteed; callers should correlate by `recordId`.
    */
   def submitTransfers(
