@@ -15,5 +15,8 @@ object AppDependencies {
     
   )
 
-  val it = Seq.empty
+  val it = Seq(
+    "com.github.tomakehurst"   % "wiremock-jre8"              % "3.0.1"                     % IntegrationTest,
+    "org.scalatestplus.play"  %% "scalatestplus-play"         % "7.0.1"                     % IntegrationTest
+  )
 }
