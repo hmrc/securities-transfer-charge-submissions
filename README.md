@@ -38,6 +38,35 @@ Set ETMP endpoint details under:
 - `microservice.services.etmp-transaction.originating-system` (default `MDTP-STC`)
 - `microservice.services.etmp-transaction.transmitting-system` (default `HIP`)
 
+Local/service-manager defaults are configured so this service will prefer
+`stamp-taxes-on-shares-stubs` when the following environment variables are present:
+
+- `MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_HOST`
+- `MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_PORT`
+
+It falls back to `localhost:11001` if those are not set.
+
+### Local stub wiring check
+
+You can verify this service is targeting `stamp-taxes-on-shares-stubs` with:
+
+1. Ensure the stub service is running (for example via service-manager profile).
+2. Check the env vars are present in the shell used to run this service:
+
+```bash
+echo "$MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_HOST"
+echo "$MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_PORT"
+```
+
+3. Start this service and send a submission request.
+4. Confirm outbound calls are being made to the resolved host/port:
+
+```bash
+grep -E "RESTAdapter/stc/transaction" logs/securities-transfer-charge-submissions.log | tail -n 20
+```
+
+If those env vars are not set, the client uses `localhost:11001`.
+
 ### License
 
 This code is open source software licensed under the [Apache 2.0 License]("http://www.apache.org/licenses/LICENSE-2.0.html").
