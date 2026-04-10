@@ -29,6 +29,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.concurrent.Promise
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.collection.mutable.ArrayBuffer
@@ -289,6 +290,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
     "return matching responses even when ETMP futures complete out of order" in:
       val cfg = appConfig(maxRecordsPerRequest = 1, maxConcurrentCalls = 3)
       val completionOrder = ArrayBuffer.empty[Int]
+      val promises = (1 to 3).map(recordId => recordId -> Promise[StcTransactionCreateResponse]()).toMap
 
       val submissionClient = new SubmissionClient:
         override def submitTransfer(
@@ -297,21 +299,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
           request: StcTransactionCreateRequest
         )(using uk.gov.hmrc.http.HeaderCarrier): Future[StcTransactionCreateResponse] =
           val recordId = request.transactionDetails.head.recordId
-
-          Future {
-            Thread.sleep((4 - recordId) * 25L)
-            completionOrder.synchronized {
-              completionOrder += recordId
-            }
-            StcTransactionCreateProcessed(
-              StcTransactionCreateProcessedBody(
-                processingDate = "2026-03-30T12:00:00Z",
-                charges = List(
-                  StcChargeSuccess(recordId, s"utrn-$recordId", "Charge", s"ref-$recordId", "STF", BigDecimal(10), "2026-04-30")
-                )
-              )
-            )
-          }
+          promises(recordId).future
 
       val transformer = new SubmissionTransformer(cfg)
 
@@ -319,7 +307,27 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       val transfers = Seq(singleRequest(1), singleRequest(2), singleRequest(3))
 
       val result = Await.result(
-        connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers),
+        {
+          val resultF = connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers)
+
+          Seq(3, 2, 1).foreach { recordId =>
+            completionOrder.synchronized {
+              completionOrder += recordId
+            }
+            promises(recordId).success(
+              StcTransactionCreateProcessed(
+                StcTransactionCreateProcessedBody(
+                  processingDate = "2026-03-30T12:00:00Z",
+                  charges = List(
+                    StcChargeSuccess(recordId, s"utrn-$recordId", "Charge", s"ref-$recordId", "STF", BigDecimal(10), "2026-04-30")
+                  )
+                )
+              )
+            )
+          }
+
+          resultF
+        },
         5.seconds
       )
 
