@@ -303,8 +303,8 @@ class SubmissionIntegrationSpec
         response.status shouldBe 400
         (response.json \ "error").as[String] should include("invalid transfer data")
 
-    "unhappy path: ETMP returns 400 error returns 200 with synthetic failures" should:
-      "return charges with error details when ETMP returns bad request" in:
+    "unhappy path: ETMP returns 400 error returns 200 with mapped failures" should:
+      "return one 400 failure per transfer when ETMP returns bad request" in:
         val payload = Json.obj(
           "declaration" -> Json.obj(
             "role1" -> "1",
@@ -340,6 +340,32 @@ class SubmissionIntegrationSpec
                 "email" -> "b@e.com",
                 "taxRate" -> 1
               )
+            ),
+            Json.obj(
+              "recordId" -> 2,
+              "transactionDetails" -> Json.obj(
+                "transactionType" -> 1,
+                "descriptionOfSecurity" -> "Shares",
+                "numberOfShares" -> 100,
+                "originalChargingPoint" -> "2026-01-15",
+                "considerationActual" -> 5000,
+                "isConnectedPartiesTransactions" -> false,
+                "companyName" -> "Corp"
+              ),
+              "mainSellerDetails" -> Json.obj(
+                "sellerName" -> "Seller",
+                "addr1" -> "Lane",
+                "postcode" -> "AB12CD",
+                "country" -> "GB"
+              ),
+              "mainBuyerDetails" -> Json.obj(
+                "buyerName" -> "Buyer",
+                "addr1" -> "Road",
+                "postcode" -> "AB12CD",
+                "country" -> "GB",
+                "email" -> "b@e.com",
+                "taxRate" -> 1
+              )
             )
           )
         )
@@ -351,9 +377,11 @@ class SubmissionIntegrationSpec
                 .withStatus(400)
                 .withHeader("Content-Type", "application/json")
                 .withBody(Json.stringify(Json.obj(
-                  "code" -> "400",
-                  "message" -> "Invalid request",
-                  "logID" -> "log-123"
+                  "error" -> Json.obj(
+                    "code" -> "400",
+                    "message" -> "Invalid request",
+                    "logID" -> "C0000AB8190CB66000000003000007A6"
+                  )
                 )))
             )
         )
@@ -369,10 +397,10 @@ class SubmissionIntegrationSpec
 
         response.status shouldBe 200
         val charges = response.json.as[List[play.api.libs.json.JsObject]]
-        charges should have size 1
-        (charges.head \ "recordId").as[Int] shouldBe 1
-        // Server returns 500 when ETMP fails
-        (charges.head \ "errorCode").as[String] shouldBe "500"
+        charges should have size 2
+        charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(1, 2)
+        charges.map(c => (c \ "errorCode").as[String]) shouldBe List("400", "400")
+        charges.map(c => (c \ "errorText").as[String]) shouldBe List("Invalid request", "Invalid request")
 
     "happy path: multiple transfers returns all charges" should:
       "return all charges for multiple transfers" in:
