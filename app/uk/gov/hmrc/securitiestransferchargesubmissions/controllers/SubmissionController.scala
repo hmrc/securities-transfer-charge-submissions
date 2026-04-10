@@ -53,16 +53,37 @@ class SubmissionController @Inject()(
   private def validateRequest(
     request: Request[AnyContent]
   ): Either[Result, (String, String, SubmissionBatchPayload)] =
-    for
-      correlationId <- headerValue(request, "correlation-id").toRight(badRequest(ErrorMessages.MissingRequiredHeaders))
-      subscriptionId <- headerValue(request, "subscription-id").toRight(badRequest(ErrorMessages.MissingRequiredHeaders))
-      body <- request.body.asJson.toRight(badRequest(ErrorMessages.InvalidTransferData, Some(malformedJsonDetails)))
-      payload <- body.validate[SubmissionBatchPayload].asEither.left.map(errors =>
-        badRequest(ErrorMessages.InvalidTransferData, Some(JsError.toJson(errors)))
-      )
-      _ <- Either.cond(payload.transfers.nonEmpty, (), badRequest(ErrorMessages.EmptyTransferBatch))
-      _ <- Either.cond(hasUniqueRecordIds(payload), (), badRequest(ErrorMessages.DuplicateRecordIds))
-    yield (correlationId, subscriptionId, payload)
+    // Phase 1 – fail fast: both required headers must be present.
+    val correlationId  = headerValue(request, "correlation-id")
+    val subscriptionId = headerValue(request, "subscription-id")
+    if correlationId.isEmpty || subscriptionId.isEmpty then
+      return Left(singleDetailBadRequest(Json.obj("message" -> ErrorMessages.MissingRequiredHeaders)))
+
+    // Phase 2 – fail fast: body must be valid JSON that matches the expected schema.
+    val payload: SubmissionBatchPayload = request.body.asJson match
+      case None =>
+        return Left(singleDetailBadRequest(Json.obj("message" -> ErrorMessages.MalformedJsonBody)))
+      case Some(body) =>
+        body.validate[SubmissionBatchPayload].asEither match
+          case Left(jsErrors) =>
+            return Left(singleDetailBadRequest(JsError.toJson(jsErrors)))
+          case Right(p) => p
+
+    // Phase 3 – accumulate: collect all payload-level constraint violations.
+    val errors = Seq.newBuilder[JsValue]
+    if payload.transfers.isEmpty then
+      errors += Json.obj("message" -> ErrorMessages.EmptyTransferBatch)
+    if !hasUniqueRecordIds(payload) then
+      errors += Json.obj("message" -> ErrorMessages.DuplicateRecordIds)
+
+    val allErrors = errors.result()
+    if allErrors.nonEmpty then
+      Left(badRequest(ErrorMessages.InvalidTransferData, Some(JsArray(allErrors))))
+    else
+      Right((correlationId.get, subscriptionId.get, payload))
+
+  private def singleDetailBadRequest(detail: JsValue): Result =
+    badRequest(ErrorMessages.InvalidTransferData, Some(JsArray(Seq(detail))))
 
   private def hasUniqueRecordIds(payload: SubmissionBatchPayload): Boolean =
     val recordIds = payload.transfers.map(_.recordId)
@@ -71,8 +92,6 @@ class SubmissionController @Inject()(
   private def headerValue(request: RequestHeader, name: String): Option[String] =
     request.headers.get(name).map(_.trim).filter(_.nonEmpty)
 
-  private def malformedJsonDetails: JsObject =
-    Json.obj("message" -> ErrorMessages.MalformedJsonBody)
 
   private def badRequest(error: String, details: Option[JsValue] = None): Result =
     BadRequest(ApiErrorResponse.asJson(error = error, details = details))

@@ -21,7 +21,7 @@ import org.apache.pekko.stream.Materializer
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import play.api.libs.json.{JsError, JsValue, Json}
+import play.api.libs.json.{JsArray, JsError, JsValue, Json}
 import play.api.mvc.AnyContentAsText
 import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
@@ -137,12 +137,6 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private def payload(transfers: Seq[SingleTransferRequest]): SubmissionBatchPayload =
     SubmissionBatchPayload(declaration = declaration, transfers = transfers)
 
-  private def errorJson(error: String) =
-    ApiErrorResponse.asJson(error)
-
-  private def errorJson(error: String, details: JsValue) =
-    ApiErrorResponse.asJson(error, Some(details))
-
   "SubmissionController.submitBatchAction" should:
     "return 200 for a valid single-record request list" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -162,7 +156,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(ErrorMessages.MissingRequiredHeaders))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length should be >= 1
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.MissingRequiredHeaders)
 
     "return 400 when required headers are blank" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -172,7 +169,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(ErrorMessages.MissingRequiredHeaders))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length should be >= 1
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.MissingRequiredHeaders)
 
     "return 400 for invalid JSON schema" in:
       val invalidJson = Json.obj("unexpected" -> "shape")
@@ -187,7 +187,9 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(ErrorMessages.InvalidTransferData, expectedDetails))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value should contain (expectedDetails)
 
     "return 400 for malformed JSON" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -201,10 +203,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(
-        ErrorMessages.InvalidTransferData,
-        Json.obj("message" -> ErrorMessages.MalformedJsonBody)
-      ))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length should be >= 1
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.MalformedJsonBody)
 
     "return 400 for an empty request array" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -214,7 +216,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(ErrorMessages.EmptyTransferBatch))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length should be >= 1
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.EmptyTransferBatch)
 
     "accept payload records without submissionId because submissionId is path-scoped" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -233,7 +238,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val result = controller.submitBatchAction("sub-123").apply(request)
 
       status(result) shouldBe BAD_REQUEST
-      assert(contentAsJson(result) == errorJson(ErrorMessages.DuplicateRecordIds))
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length should be >= 1
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.DuplicateRecordIds)
 
     "return connector failures when downstream returns a failure charge" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -247,6 +255,34 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("\"recordId\":1")
       responseBody should include("\"errorCode\":\"400\"")
       responseBody should include("bad input")
+
+    "fail fast on missing headers and not also validate the body" in:
+      // Headers absent + wrong JSON shape: only the header error should appear, not schema errors.
+      val request = FakeRequest("POST", "/submission/sub-123")
+        .withJsonBody(Json.obj("unexpected" -> "shape"))
+
+      val result = controller.submitBatchAction("sub-123").apply(request)
+
+      status(result) shouldBe BAD_REQUEST
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length shouldBe 1
+      val messages = details.value.flatMap(d => (d \ "message").asOpt[String]).toSeq
+      messages should contain only ErrorMessages.MissingRequiredHeaders
+
+    "fail fast on missing headers before checking payload constraints" in:
+      // Headers absent + duplicate recordIds: only the header error should appear.
+      val request = FakeRequest("POST", "/submission/sub-123")
+        .withJsonBody(Json.toJson(payload(Seq(singleRequest(7), singleRequest(7)))))
+
+      val result = controller.submitBatchAction("sub-123").apply(request)
+
+      status(result) shouldBe BAD_REQUEST
+      val responseJson = contentAsJson(result)
+      val details = (responseJson \ "details").as[JsArray]
+      details.value.length shouldBe 1
+      val messages = details.value.flatMap(d => (d \ "message").asOpt[String]).toSeq
+      messages should contain only ErrorMessages.MissingRequiredHeaders
 
 
   override def afterAll(): Unit =

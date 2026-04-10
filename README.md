@@ -20,6 +20,29 @@ Current submission endpoint:
 
 After submission, transfer details can be viewed and amended if required, although not all fields are amendable.
 
+### Request validation strategy
+
+Validation runs in three phases. Each phase short-circuits if it finds a problem, so callers always get the most actionable error first:
+
+| Phase | What is checked | Behaviour |
+|-------|----------------|-----------|
+| 1 – Headers | Both `correlation-id` and `subscription-id` must be present and non-blank | **Fail fast** – returns `400` immediately with a single details entry |
+| 2 – Body/schema | The request body must be valid JSON and must deserialise to `SubmissionBatchPayload` | **Fail fast** – returns `400` immediately with a single details entry |
+| 3 – Payload constraints | All business rules that apply to a structurally valid payload (e.g. non-empty `transfers`, unique `recordId`s) | **Accumulate** – all failing constraints are collected and returned together in one `400` |
+
+All `400` responses use the shape:
+
+```json
+{
+  "error": "invalid transfer data",
+  "details": [
+    { "message": "<human-readable reason>" }
+  ]
+}
+```
+
+Phase 2 schema errors follow the same `details` array structure but use the raw `JsError` object produced by Play-JSON instead of a `message` key.
+
 ## ETMP create client
 
 This service now contains a Play HTTP client for the ETMP create endpoint:

@@ -26,7 +26,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.play.guice.GuiceOneServerPerSuite
 import play.api.Application
 import play.api.inject.guice.GuiceApplicationBuilder
-import play.api.libs.json.Json
+import play.api.libs.json.{JsArray, Json}
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.JsonBodyWritables.writeableOf_JsValue
 import play.api.libs.ws.DefaultBodyWritables.writeableOf_String
@@ -45,6 +45,9 @@ class SubmissionIntegrationSpec
   )
   private val wsClient = app.injector.instanceOf[WSClient]
   private val baseUrl = s"http://localhost:$port"
+
+  private def detailMessages(json: play.api.libs.json.JsValue): Seq[String] =
+    (json \ "details").as[JsArray].value.flatMap(d => (d \ "message").asOpt[String]).toSeq
 
   override def beforeAll(): Unit =
     super.beforeAll()
@@ -176,7 +179,8 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 400
-        (response.json \ "error").as[String] should include("missing required headers")
+        (response.json \ "error").as[String] should include("invalid transfer data")
+        detailMessages(response.json) should contain("missing required headers: correlation-id and subscription-id")
 
     "unhappy path: empty transfers returns 400" should:
       "return error when transfer array is empty" in:
@@ -202,7 +206,8 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 400
-        (response.json \ "error").as[String] should include("at least one transfer")
+        (response.json \ "error").as[String] should include("invalid transfer data")
+        detailMessages(response.json) should contain("at least one transfer must be provided")
 
     "unhappy path: duplicate recordIds returns 400" should:
       "return error when recordIds are duplicated" in:
@@ -281,7 +286,8 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 400
-        (response.json \ "error").as[String] should include("recordIds must be unique")
+        (response.json \ "error").as[String] should include("invalid transfer data")
+        detailMessages(response.json) should contain("recordIds must be unique")
 
     "unhappy path: malformed JSON returns 400" should:
       "return error for invalid JSON" in:
