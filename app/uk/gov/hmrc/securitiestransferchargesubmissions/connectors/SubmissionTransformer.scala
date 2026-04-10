@@ -19,7 +19,7 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 import play.api.Logging
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TfBoolean
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
 
 import javax.inject.{Inject, Singleton}
@@ -104,12 +104,12 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
           numberOfShares                = td.numberOfShares,
           nominalValue                  = td.nominalValue,
           marketValue                   = td.marketValue,
-          qualifyAsTreasuryShares       = td.qualifyAsTreasuryShares.map(YnBoolean.fromBoolean),
+          qualifyAsTreasuryShares       = td.qualifyAsTreasuryShares.map(TfBoolean.fromBoolean),
           maxPricePaid                  = td.maxPricePaid,
           minPricePaid                  = td.minPricePaid,
           originalChargingPoint         = td.originalChargingPoint,
           considerationActual           = td.considerationActual,
-          isConnectedPartiesTransactions = YnBoolean.fromBoolean(td.isConnectedPartiesTransactions),
+          isConnectedPartiesTransactions = TfBoolean.fromBoolean(td.isConnectedPartiesTransactions),
           companyName                   = td.companyName,
           companyRegistrationNumber     = td.companyRegistrationNumber,
           reliefClaimedName             = td.reliefClaimedName,
@@ -122,10 +122,10 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
             ContingentDetailsCreate(
               recordId               = r.recordId,
               provisionalDate        = cd.provisionalDate,
-              isAmountUnasertainable = YnBoolean.fromBoolean(cd.isAmountUnasertainable),
+              isAmountUnasertainable = TfBoolean.fromBoolean(cd.isAmountUnasertainable),
               unascertainableAmount  = cd.unascertainableAmount,
               ascertainableAmount    = cd.ascertainableAmount,
-              defermentOfPayment     = YnBoolean.fromBoolean(cd.defermentOfPayment),
+              defermentOfPayment     = TfBoolean.fromBoolean(cd.defermentOfPayment),
               originalDefermentDate  = cd.originalDefermentDate
             )
           }
@@ -167,7 +167,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
           email      = bd.email,
           uniqueId   = bd.uniqueId,
           taxRate    = bd.taxRate,
-          isPLC      = bd.isPLC.map(YnBoolean.fromBoolean)
+          isPLC      = bd.isPLC.map(TfBoolean.fromBoolean)
         )
       },
       otherBuyers = {
@@ -211,8 +211,8 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
           addr4                 = d.addr4,
           postcode              = d.postcode,
           country               = d.country,
-          selfDeclarationAgent  = d.selfDeclarationAgent.map(YnBoolean.fromBoolean),
-          isCorrectInfo         = YnBoolean.fromBoolean(d.isCorrectInfo)
+          selfDeclarationAgent  = d.selfDeclarationAgent.map(TfBoolean.fromBoolean),
+          isCorrectInfo         = TfBoolean.fromBoolean(d.isCorrectInfo)
         )
       }
     )

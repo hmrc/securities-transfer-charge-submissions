@@ -22,7 +22,7 @@ import play.api.Configuration
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, ReasonForPurchase, TransferType, YnBoolean}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, ReasonForPurchase, TfBoolean, TransferType}
 
 import java.time.LocalDate
 
@@ -118,7 +118,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
           minPricePaid = None,
           originalChargingPoint = LocalDate.parse("2026-03-30"),
           considerationActual = BigDecimal(100),
-          isConnectedPartiesTransactions = YnBoolean.No,
+          isConnectedPartiesTransactions = TfBoolean.False,
           companyName = "company",
           companyRegistrationNumber = None,
           reliefClaimedName = None,
@@ -136,7 +136,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       otherBuyers = None,
       agentDetails = None,
       declaration = recordIds.map { recordId =>
-        DeclarationCreate(recordId, None, None, s"name-$recordId", "addr1", None, None, None, "AA11AA", "GB", None, YnBoolean.Yes)
+        DeclarationCreate(recordId, None, None, s"name-$recordId", "addr1", None, None, None, "AA11AA", "GB", None, TfBoolean.True)
       }
     )
 
@@ -239,11 +239,11 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
 
       result.size shouldBe 1
       result.head.transactionDetails.map(_.recordId) shouldBe Seq(1)
-      result.head.transactionDetails.map(_.isConnectedPartiesTransactions) shouldBe Seq(YnBoolean.No)
+      result.head.transactionDetails.map(_.isConnectedPartiesTransactions) shouldBe Seq(TfBoolean.False)
       result.head.mainSellerDetails.map(_.recordId) shouldBe Seq(1)
       result.head.mainBuyerDetails.map(_.recordId) shouldBe Seq(1)
       result.head.declaration.map(_.recordId) shouldBe Seq(1)
-      result.head.declaration.map(_.isCorrectInfo) shouldBe Seq(YnBoolean.Yes)
+      result.head.declaration.map(_.isCorrectInfo) shouldBe Seq(TfBoolean.True)
 
     "return one request for n singles where n is less than or equal to max records per request" in:
       val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2), singleRecordRequest(3)), declaration, submissionId)

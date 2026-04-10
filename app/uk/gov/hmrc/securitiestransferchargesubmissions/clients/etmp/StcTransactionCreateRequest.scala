@@ -21,7 +21,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.models.BuyerTaxRate
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.DeclarationRole
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.ReasonForPurchase
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.TransferType
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.YnBoolean
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.TfBoolean
 
 import java.time.LocalDate
 
@@ -45,12 +45,12 @@ final case class TransactionDetailsCreate(
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
   marketValue: Option[BigDecimal],
-  qualifyAsTreasuryShares: Option[YnBoolean],
+  qualifyAsTreasuryShares: Option[TfBoolean],
   maxPricePaid: Option[BigDecimal],
   minPricePaid: Option[BigDecimal],
   originalChargingPoint: LocalDate,
   considerationActual: BigDecimal,
-  isConnectedPartiesTransactions: YnBoolean,
+  isConnectedPartiesTransactions: TfBoolean,
   companyName: String,
   companyRegistrationNumber: Option[String],
   reliefClaimedName: Option[String],
@@ -60,10 +60,10 @@ final case class TransactionDetailsCreate(
 final case class ContingentDetailsCreate(
   recordId: Int,
   provisionalDate: LocalDate,
-  isAmountUnasertainable: YnBoolean,
+  isAmountUnasertainable: TfBoolean,
   unascertainableAmount: Option[BigDecimal],
   ascertainableAmount: Option[BigDecimal],
-  defermentOfPayment: YnBoolean,
+  defermentOfPayment: TfBoolean,
   originalDefermentDate: Option[LocalDate]
 )
 
@@ -95,7 +95,7 @@ final case class BuyerDetailsCreate(
   email: String,
   uniqueId: Option[String],
   taxRate: BuyerTaxRate,
-  isPLC: Option[YnBoolean]
+  isPLC: Option[TfBoolean]
 )
 
 final case class OtherBuyerCreateName(
@@ -128,8 +128,8 @@ final case class DeclarationCreate(
   addr4: Option[String],
   postcode: String,
   country: String,
-  selfDeclarationAgent: Option[YnBoolean],
-  isCorrectInfo: YnBoolean
+  selfDeclarationAgent: Option[TfBoolean],
+  isCorrectInfo: TfBoolean
 )
 
 object StcTransactionCreateRequest:

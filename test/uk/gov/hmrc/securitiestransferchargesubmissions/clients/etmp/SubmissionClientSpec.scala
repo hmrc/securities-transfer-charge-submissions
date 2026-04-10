@@ -27,7 +27,7 @@ import play.api.libs.json.Json
 import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TransferType, YnBoolean}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TfBoolean, TransferType}
 
 import java.time.{Clock, Instant, ZoneId, LocalDate}
 import scala.concurrent.Await
@@ -85,7 +85,7 @@ class SubmissionClientSpec
       minPricePaid                  = None,
       originalChargingPoint         = LocalDate.parse("2026-03-30"),
       considerationActual           = BigDecimal(1000),
-      isConnectedPartiesTransactions = YnBoolean.No,
+      isConnectedPartiesTransactions = TfBoolean.False,
       companyName                   = "Company Ltd",
       companyRegistrationNumber     = None,
       reliefClaimedName             = None,
@@ -97,7 +97,7 @@ class SubmissionClientSpec
     mainBuyerDetails  = Seq(BuyerDetailsCreate(1, "Buyer Ltd", "2 High St", None, None, None, "BB2 2BB", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None)),
     otherBuyers       = None,
     agentDetails      = None,
-    declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, YnBoolean.Yes))
+    declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, TfBoolean.True))
   )
 
   private val processedBody = Json.obj(
@@ -238,6 +238,8 @@ class SubmissionClientSpec
           .withHeader("X-Originating-System",   equalTo("MDTP-STC"))
           .withHeader("X-Transmitting-System",  equalTo("HIP"))
           .withHeader("X-Receipt-Date",         equalTo(receiptDate))
+          .withRequestBody(containing("\"isConnectedPartiesTransactions\":\"F\""))
+          .withRequestBody(containing("\"isCorrectInfo\":\"T\""))
       )
 
     "use exponential backoff between retries" in:
