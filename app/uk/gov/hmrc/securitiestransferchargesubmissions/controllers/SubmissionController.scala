@@ -69,16 +69,11 @@ class SubmissionController @Inject()(
             return Left(singleDetailBadRequest(JsError.toJson(jsErrors)))
           case Right(p) => p
 
-    // Phase 3 – accumulate: collect all payload-level constraint violations.
-    val errors = Seq.newBuilder[JsValue]
+    // Phase 3 – payload constraints: checks are currently mutually exclusive.
     if payload.transfers.isEmpty then
-      errors += Json.obj("message" -> ErrorMessages.EmptyTransferBatch)
-    if !hasUniqueRecordIds(payload) then
-      errors += Json.obj("message" -> ErrorMessages.DuplicateRecordIds)
-
-    val allErrors = errors.result()
-    if allErrors.nonEmpty then
-      Left(badRequest(ErrorMessages.InvalidTransferData, Some(JsArray(allErrors))))
+      Left(singleDetailBadRequest(Json.obj("message" -> ErrorMessages.EmptyTransferBatch)))
+    else if !hasUniqueRecordIds(payload) then
+      Left(singleDetailBadRequest(Json.obj("message" -> ErrorMessages.DuplicateRecordIds)))
     else
       Right((correlationId.get, subscriptionId.get, payload))
 
