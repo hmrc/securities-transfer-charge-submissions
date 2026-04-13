@@ -28,7 +28,7 @@ Validation runs in three phases. Each phase short-circuits if it finds a problem
 |-------|----------------|-----------|
 | 1 – Headers | Both `correlation-id` and `subscription-id` must be present and non-blank | **Fail fast** – returns `400` immediately with a single details entry |
 | 2 – Body/schema | The request body must be valid JSON and must deserialise to `SubmissionBatchPayload` | **Fail fast** – returns `400` immediately with a single details entry |
-| 3 – Payload constraints | All business rules that apply to a structurally valid payload (e.g. non-empty `transfers`, unique `recordId`s) | **Accumulate** – all failing constraints are collected and returned together in one `400` |
+| 3 – Payload constraints | All business rules that apply to a structurally valid payload (e.g. non-empty `transfers`, unique `recordId`s) | **Fail fast** – constraints are mutually exclusive; the first failing constraint is returned in one `400` |
 
 All `400` responses use the shape:
 
@@ -61,13 +61,16 @@ Set ETMP endpoint details under:
 - `microservice.services.etmp-transaction.originating-system` (default `MDTP-STC`)
 - `microservice.services.etmp-transaction.transmitting-system` (default `HIP`)
 
-Local/service-manager defaults are configured so this service will prefer
-`stamp-taxes-on-shares-stubs` when the following environment variables are present:
+The host and port default to `localhost` and `11001` as set in `application.conf`. Like any
+Play config key, they can be overridden at runtime via environment variables that follow the
+standard Play convention (uppercase, dots and hyphens replaced by underscores):
 
-- `MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_HOST`
-- `MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_PORT`
+- `MICROSERVICE_SERVICES_ETMP_TRANSACTION_HOST`
+- `MICROSERVICE_SERVICES_ETMP_TRANSACTION_PORT`
 
-It falls back to `localhost:11001` if those are not set.
+Note: there is no code-level fallback — `AppConfig` reads these keys with `config.get`, so they
+must be present (either from `application.conf` or an override). Removing them without a
+replacement will cause the application to fail to start.
 
 ### Local stub wiring check
 
@@ -77,8 +80,8 @@ You can verify this service is targeting `stamp-taxes-on-shares-stubs` with:
 2. Check the env vars are present in the shell used to run this service:
 
 ```bash
-echo "$MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_HOST"
-echo "$MICROSERVICE_SERVICES_STAMP_TAXES_ON_SHARES_STUBS_PORT"
+echo "$MICROSERVICE_SERVICES_ETMP_TRANSACTION_HOST"
+echo "$MICROSERVICE_SERVICES_ETMP_TRANSACTION_PORT"
 ```
 
 3. Start this service and send a submission request.
