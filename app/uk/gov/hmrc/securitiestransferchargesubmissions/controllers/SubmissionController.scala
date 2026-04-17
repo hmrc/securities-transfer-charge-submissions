@@ -24,6 +24,8 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConn
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
+import uk.gov.hmrc.auth.core.AuthConnector
+import uk.gov.hmrc.auth.core.AuthorisedFunctions
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
@@ -31,23 +33,26 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class SubmissionController @Inject()(
   cc: ControllerComponents,
-  submissionConnector: SubmissionConnector
-)(using ec: ExecutionContext) extends BackendController(cc):
+  submissionConnector: SubmissionConnector,
+  val authConnector: AuthConnector
+)(using ec: ExecutionContext) extends BackendController(cc) with AuthorisedFunctions:
 
   def submitBatchAction(submissionId: String): Action[AnyContent] = Action.async { implicit request =>
-    validateRequest(request) match
-      case Left(result) => Future.successful(result)
-      case Right((correlationId, subscriptionId, payload)) =>
-        submissionConnector
-          .submitTransfers(
-            stcId = subscriptionId,
-            submissionId = submissionId,
-            correlationId = correlationId,
-            declaration = payload.declaration,
-            transfers = payload.transfers
-          )
-          .map(responses => Ok(Json.toJson(responses)))
-          .recover(handleClientMappingErrors)
+    authorised() {
+      validateRequest(request) match
+        case Left(result) => Future.successful(result)
+        case Right((correlationId, subscriptionId, payload)) =>
+          submissionConnector
+            .submitTransfers(
+              stcId = subscriptionId,
+              submissionId = submissionId,
+              correlationId = correlationId,
+              declaration = payload.declaration,
+              transfers = payload.transfers
+            )
+            .map(responses => Ok(Json.toJson(responses)))
+            .recover(handleClientMappingErrors)
+    }
   }
 
   private def validateRequest(

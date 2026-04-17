@@ -25,6 +25,9 @@ import play.api.libs.json.{JsArray, JsError, JsValue, Json}
 import play.api.mvc.AnyContentAsText
 import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
+import uk.gov.hmrc.auth.core.{AuthConnector}
+import uk.gov.hmrc.auth.core.authorise.Predicate
+import uk.gov.hmrc.auth.core.retrieve.Retrieval
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcChargeFailure, StcChargeSuccess}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
@@ -35,6 +38,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 import java.time.LocalDate
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 
@@ -68,8 +72,12 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
     )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
       Future.successful(Seq(StcChargeFailure(1, "400", "bad input")))
 
-  private val controller = new SubmissionController(controllerComponents, successConnector)
-  private val controllerWithFailure = new SubmissionController(controllerComponents, failingConnector)
+  private val stubAuthConnector = new AuthConnector {
+    override def authorise[A](predicate: Predicate, retrieval: Retrieval[A])(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[A] = Future.successful(().asInstanceOf[A])
+  }
+
+  private val controller = new SubmissionController(controllerComponents, successConnector, stubAuthConnector)
+  private val controllerWithFailure = new SubmissionController(controllerComponents, failingConnector, stubAuthConnector)
 
   private def singleRequest(recordId: Int): SingleTransferRequest =
     SingleTransferRequest(
