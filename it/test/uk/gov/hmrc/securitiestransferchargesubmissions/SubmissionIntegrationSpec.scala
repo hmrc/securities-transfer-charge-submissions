@@ -30,6 +30,8 @@ import play.api.libs.json.{JsArray, Json}
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.JsonBodyWritables.writeableOf_JsValue
 import play.api.libs.ws.DefaultBodyWritables.writeableOf_String
+import play.api.inject.bind
+import uk.gov.hmrc.auth.core.AuthConnector
 
 class SubmissionIntegrationSpec
     extends AnyWordSpec
@@ -65,6 +67,7 @@ class SubmissionIntegrationSpec
         "microservice.services.etmp-transaction.port" -> etmpWireMockPort,
         "microservice.services.etmp-transaction.protocol" -> "http"
       )
+      .overrides(bind[AuthConnector].to[StubAuthConnector])
       .build()
 
   "POST /securities-transfer-charge-submissions/submission/:submissionId" when:

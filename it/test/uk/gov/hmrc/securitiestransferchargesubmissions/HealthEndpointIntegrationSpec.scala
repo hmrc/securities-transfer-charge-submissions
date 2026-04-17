@@ -23,6 +23,8 @@ import org.scalatestplus.play.guice.GuiceOneServerPerSuite
 import play.api.Application
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.ws.WSClient
+import play.api.inject.bind
+import uk.gov.hmrc.auth.core.AuthConnector
 
 class HealthEndpointIntegrationSpec
   extends AnyWordSpec
@@ -36,6 +38,7 @@ class HealthEndpointIntegrationSpec
 
   override def fakeApplication(): Application =
     GuiceApplicationBuilder()
+      .overrides(bind[AuthConnector].to[StubAuthConnector])
       .build()
 
   "service health endpoint" should:
