@@ -77,7 +77,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       transactionDetails = SingleTransferTransactionDetails(
         transactionType = TransferType.STF,
         reasonForPurchase = None,
-        descriptionOfSecurity = "Ordinary shares",
+        typeOfSecurity = "Ordinary shares",
         numberOfShares = 10,
         nominalValue = None,
         marketValue = Some(BigDecimal(2000)),

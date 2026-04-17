@@ -85,7 +85,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 1,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Ordinary Shares",
+                "typeOfSecurity" -> "Ordinary Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -225,7 +225,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 1,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -251,7 +251,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 1,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -319,7 +319,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 1,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -345,7 +345,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 2,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -418,7 +418,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 10,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,
@@ -444,7 +444,7 @@ class SubmissionIntegrationSpec
               "recordId" -> 11,
               "transactionDetails" -> Json.obj(
                 "transactionType" -> 1,
-                "descriptionOfSecurity" -> "Shares",
+                "typeOfSecurity" -> "Shares",
                 "numberOfShares" -> 100,
                 "originalChargingPoint" -> "2026-01-15",
                 "considerationActual" -> 5000,

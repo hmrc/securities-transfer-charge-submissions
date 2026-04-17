@@ -78,7 +78,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       transactionDetails = SingleTransferTransactionDetails(
         transactionType = TransferType.STF,
         reasonForPurchase = None,
-        descriptionOfSecurity = s"security-$recordId",
+        typeOfSecurity = s"security-$recordId",
         numberOfShares = 1,
         nominalValue = None,
         marketValue = None,
@@ -109,7 +109,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
           recordId = recordId,
           transactionType = TransferType.STF,
           reasonForPurchase = None,
-          descriptionOfSecurity = s"security-$recordId",
+          typeOfSecurity = s"security-$recordId",
           numberOfShares = 1,
           nominalValue = None,
           marketValue = None,
@@ -135,9 +135,9 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       },
       otherBuyers = None,
       agentDetails = None,
-      declaration = recordIds.map { recordId =>
-        DeclarationCreate(recordId, None, None, s"name-$recordId", "addr1", None, None, None, "AA11AA", "GB", None, TfBoolean.True)
-      }
+      declaration = DeclarationCreate(
+        None, None, "name", "addr1", None, None, None, "AA11AA", "GB", None, TfBoolean.True
+      )
     )
 
   "SubmissionTransformer.toSingleTransferResponses" should:
@@ -242,8 +242,7 @@ class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
       result.head.transactionDetails.map(_.isConnectedPartiesTransactions) shouldBe Seq(TfBoolean.False)
       result.head.mainSellerDetails.map(_.recordId) shouldBe Seq(1)
       result.head.mainBuyerDetails.map(_.recordId) shouldBe Seq(1)
-      result.head.declaration.map(_.recordId) shouldBe Seq(1)
-      result.head.declaration.map(_.isCorrectInfo) shouldBe Seq(TfBoolean.True)
+      result.head.declaration.isCorrectInfo shouldBe TfBoolean.True
 
     "return one request for n singles where n is less than or equal to max records per request" in:
       val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2), singleRecordRequest(3)), declaration, submissionId)

@@ -100,7 +100,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
           recordId                      = r.recordId,
           transactionType               = td.transactionType,
           reasonForPurchase             = td.reasonForPurchase,
-          descriptionOfSecurity         = td.descriptionOfSecurity,
+          typeOfSecurity                = td.typeOfSecurity,
           numberOfShares                = td.numberOfShares,
           nominalValue                  = td.nominalValue,
           marketValue                   = td.marketValue,
@@ -182,7 +182,6 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
         val all = batch.flatMap { r =>
           r.agentDetails.getOrElse(Seq.empty).map { ad =>
             AgentDetailsCreate(
-              recordId        = r.recordId,
               name            = ad.name,
               addr1           = ad.addr1,
               addr2           = ad.addr2,
@@ -196,12 +195,11 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
             )
           }
         }
-        if all.isEmpty then None else Some(all)
+        all.headOption
       },
-      declaration = batch.map { r =>
+      declaration = {
         val d = declaration
         DeclarationCreate(
-          recordId              = r.recordId,
           role1                 = d.role1,
           role2                 = d.role2,
           name                  = d.name,

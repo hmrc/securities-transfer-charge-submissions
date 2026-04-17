@@ -33,15 +33,15 @@ final case class StcTransactionCreateRequest(
   otherSellers: Option[Seq[OtherSellerCreateName]],
   mainBuyerDetails: Seq[BuyerDetailsCreate],
   otherBuyers: Option[Seq[OtherBuyerCreateName]],
-  agentDetails: Option[Seq[AgentDetailsCreate]],
-  declaration: Seq[DeclarationCreate]
+  agentDetails: Option[AgentDetailsCreate],
+  declaration: DeclarationCreate
 )
 
 final case class TransactionDetailsCreate(
   recordId: Int,
   transactionType: TransferType,
   reasonForPurchase: Option[ReasonForPurchase],
-  descriptionOfSecurity: String,
+  typeOfSecurity: String,
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
   marketValue: Option[BigDecimal],
@@ -104,7 +104,6 @@ final case class OtherBuyerCreateName(
 )
 
 final case class AgentDetailsCreate(
-  recordId: Int,
   name: String,
   addr1: String,
   addr2: Option[String],
@@ -118,7 +117,6 @@ final case class AgentDetailsCreate(
 )
 
 final case class DeclarationCreate(
-  recordId: Int,
   role1: Option[DeclarationRole],
   role2: Option[String],
   name: String,

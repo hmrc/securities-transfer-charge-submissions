@@ -71,7 +71,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       transactionDetails = SingleTransferTransactionDetails(
         transactionType = TransferType.STF,
         reasonForPurchase = None,
-        descriptionOfSecurity = s"security-$recordId",
+        typeOfSecurity = s"security-$recordId",
         numberOfShares = 10,
         nominalValue = None,
         marketValue = None,

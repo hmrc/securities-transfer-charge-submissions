@@ -76,7 +76,7 @@ class SubmissionClientSpec
       recordId                      = 1,
       transactionType               = TransferType.STF,
       reasonForPurchase             = None,
-      descriptionOfSecurity         = "Ordinary shares",
+      typeOfSecurity         = "Ordinary shares",
       numberOfShares                = 10,
       nominalValue                  = None,
       marketValue                   = None,
@@ -97,7 +97,7 @@ class SubmissionClientSpec
     mainBuyerDetails  = Seq(BuyerDetailsCreate(1, "Buyer Ltd", "2 High St", None, None, None, "BB2 2BB", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None)),
     otherBuyers       = None,
     agentDetails      = None,
-    declaration       = Seq(DeclarationCreate(1, None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, TfBoolean.True))
+    declaration       = DeclarationCreate(None, None, "Seller Ltd", "1 Main St", None, None, None, "AA1 1AA", "GB", None, TfBoolean.True)
   )
 
   private val processedBody = Json.obj(

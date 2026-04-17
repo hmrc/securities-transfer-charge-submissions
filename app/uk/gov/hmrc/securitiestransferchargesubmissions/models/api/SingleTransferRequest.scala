@@ -38,7 +38,7 @@ final case class SingleTransferRequest(
 final case class SingleTransferTransactionDetails(
   transactionType: TransferType,
   reasonForPurchase: Option[ReasonForPurchase],
-  descriptionOfSecurity: String,
+  typeOfSecurity: String,
   numberOfShares: Int,
   nominalValue: Option[BigDecimal],
   marketValue: Option[BigDecimal],
