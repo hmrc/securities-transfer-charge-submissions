@@ -29,8 +29,12 @@ class AppConfig @Inject()(config: Configuration):
   private val etmpHost = config.get[String]("microservice.services.etmp-transaction.host")
   private val etmpPort = config.get[Int]("microservice.services.etmp-transaction.port")
   private val etmpProtocol = config.getOptional[String]("microservice.services.etmp-transaction.protocol").getOrElse("http")
+  private val etmpPrefix = config.getOptional[String]("microservice.services.etmp-transaction.prefix").getOrElse("")
 
-  val etmpTransactionBaseUrl: String = s"$etmpProtocol://$etmpHost:$etmpPort"
+  val etmpTransactionBaseUrl: String = {
+    val baseUrl = s"$etmpProtocol://$etmpHost:$etmpPort"
+    if etmpPrefix.isEmpty then baseUrl else s"$baseUrl/$etmpPrefix"
+  }
   val etmpOriginatingSystem: String = config
     .getOptional[String]("microservice.services.etmp-transaction.originating-system")
     .getOrElse("MDTP-STC")
