@@ -61,7 +61,7 @@ Set ETMP endpoint details under:
 - `microservice.services.etmp-transaction.originating-system` (default `MDTP-STC`)
 - `microservice.services.etmp-transaction.transmitting-system` (default `HIP`)
 
-The host and port default to `localhost` and `11001` as set in `application.conf`. Like any
+The host and port default to `localhost` and `30038` as set in `application.conf`. Like any
 Play config key, they can be overridden at runtime via environment variables that follow the
 standard Play convention (uppercase, dots and hyphens replaced by underscores):
 
@@ -91,7 +91,7 @@ echo "$MICROSERVICE_SERVICES_ETMP_TRANSACTION_PORT"
 grep -E "RESTAdapter/stc/transaction" logs/securities-transfer-charge-submissions.log | tail -n 20
 ```
 
-If those env vars are not set, the client uses `localhost:11001`.
+If those env vars are not set, the client uses `localhost:30038`.
 
 ### License
 
