@@ -3,6 +3,7 @@ import uk.gov.hmrc.DefaultBuildSettings
 ThisBuild / majorVersion := 0
 ThisBuild / scalaVersion := "3.3.6"
 ThisBuild / scalacOptions += "-Wconf:msg=Flag.*repeatedly:s"
+ThisBuild / scalacOptions += "-Werror"
 
 lazy val microservice = Project("securities-transfer-charge-submissions", file("."))
   .enablePlugins(play.sbt.PlayScala, SbtDistributablesPlugin)
@@ -12,6 +13,7 @@ lazy val microservice = Project("securities-transfer-charge-submissions", file("
     // https://www.scala-lang.org/2021/01/12/configuring-and-suppressing-warnings.html
     // suppress warnings in generated routes files
     scalacOptions += "-Wconf:src=routes/.*:s",
+    PlayKeys.devSettings += "play.server.http.port" -> "30034",
   )
   .settings(CodeCoverageSettings.settings: _*)
 
