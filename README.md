@@ -14,7 +14,7 @@ Transfer details can be collected from the UI forms and submitted as one or more
 
 Current submission endpoint:
 
-- `POST /submission/:submissionId`
+- `POST /securities-transfer-charge-submissions/submission/:submissionId`
 - headers: `correlation-id`, `subscription-id`
 - body: `SubmissionBatchPayload` containing a single `declaration` plus one or more `transfers`
 
