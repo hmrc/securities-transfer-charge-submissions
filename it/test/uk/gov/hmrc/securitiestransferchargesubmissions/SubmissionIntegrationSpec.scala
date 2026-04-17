@@ -65,7 +65,8 @@ class SubmissionIntegrationSpec
       .configure(
         "microservice.services.etmp-transaction.host" -> "localhost",
         "microservice.services.etmp-transaction.port" -> etmpWireMockPort,
-        "microservice.services.etmp-transaction.protocol" -> "http"
+        "microservice.services.etmp-transaction.protocol" -> "http",
+        "microservice.services.etmp-transaction.prefix" -> ""
       )
       .overrides(bind[AuthConnector].to[StubAuthConnector])
       .build()
