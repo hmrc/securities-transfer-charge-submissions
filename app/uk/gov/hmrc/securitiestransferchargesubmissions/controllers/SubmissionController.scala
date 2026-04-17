@@ -44,7 +44,7 @@ class SubmissionController @Inject()(
         case Right((correlationId, subscriptionId, payload)) =>
           submissionConnector
             .submitTransfers(
-              stcId = subscriptionId,
+              subscriptionId = subscriptionId,
               submissionId = submissionId,
               correlationId = correlationId,
               declaration = payload.declaration,

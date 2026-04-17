@@ -48,9 +48,9 @@ class SubmissionClientSpec
   private val fixedClock   = Clock.fixed(fixedInstant, ZoneId.of("UTC"))
   private val receiptDate  = "2026-03-31T12:00:00Z"
 
-  private val stcId         = "stc-123"
+  private val subscriptionId = "stc-123"
   private val correlationId = "corr-456"
-  private val path          = s"/RESTAdapter/stc/transaction/$stcId"
+  private val path          = s"/RESTAdapter/stc/transaction/$subscriptionId"
 
   private def appConfig(maxRetries: Int = 0, initialBackoffMs: Long = 0): AppConfig =
     new AppConfig(Configuration.from(Map(
@@ -147,7 +147,7 @@ class SubmissionClientSpec
           .willReturn(aResponse().withStatus(201).withBody(processedBody).withHeader("Content-Type", "application/json"))
       )
 
-      val result = Await.result(client().submitTransfer(stcId, correlationId, minimalRequest), 5.seconds)
+      val result = Await.result(client().submitTransfer(subscriptionId, correlationId, minimalRequest), 5.seconds)
 
       result shouldBe StcTransactionCreateProcessed(StcTransactionCreateProcessedBody(
         processingDate = "2026-03-31T12:00:00Z",
@@ -161,7 +161,7 @@ class SubmissionClientSpec
           .willReturn(aResponse().withStatus(400).withBody(badRequestBody).withHeader("Content-Type", "application/json"))
       )
 
-      val result = Await.result(client(maxRetries = 3).submitTransfer(stcId, correlationId, minimalRequest), 5.seconds)
+      val result = Await.result(client(maxRetries = 3).submitTransfer(subscriptionId, correlationId, minimalRequest), 5.seconds)
 
       result shouldBe StcTransactionCreateBadRequest(StcTransactionCreateBadRequestBody(
         code    = "400",
@@ -177,7 +177,7 @@ class SubmissionClientSpec
           .willReturn(aResponse().withStatus(422).withBody(businessErrorBody).withHeader("Content-Type", "application/json"))
       )
 
-      val result = Await.result(client(maxRetries = 3).submitTransfer(stcId, correlationId, minimalRequest), 5.seconds)
+      val result = Await.result(client(maxRetries = 3).submitTransfer(subscriptionId, correlationId, minimalRequest), 5.seconds)
 
       result shouldBe StcTransactionCreateBusinessError(StcTransactionCreateBusinessErrorBody(
         processingDate = "2026-03-31T12:00:00Z",
@@ -202,7 +202,7 @@ class SubmissionClientSpec
       )
 
       val result = Await.result(
-        client(maxRetries = 1, initialBackoffMs = 0).submitTransfer(stcId, correlationId, minimalRequest),
+        client(maxRetries = 1, initialBackoffMs = 0).submitTransfer(subscriptionId, correlationId, minimalRequest),
         5.seconds
       )
 
@@ -216,7 +216,7 @@ class SubmissionClientSpec
       )
 
       val exception = the[UpstreamErrorResponse] thrownBy Await.result(
-        client(maxRetries = 2, initialBackoffMs = 0).submitTransfer(stcId, correlationId, minimalRequest),
+        client(maxRetries = 2, initialBackoffMs = 0).submitTransfer(subscriptionId, correlationId, minimalRequest),
         5.seconds
       )
 
@@ -230,7 +230,7 @@ class SubmissionClientSpec
           .willReturn(aResponse().withStatus(201).withBody(processedBody).withHeader("Content-Type", "application/json"))
       )
 
-      Await.result(client().submitTransfer(stcId, correlationId, minimalRequest), 5.seconds)
+      Await.result(client().submitTransfer(subscriptionId, correlationId, minimalRequest), 5.seconds)
 
       wireMockServer.verify(
         postRequestedFor(urlPathEqualTo(path))
@@ -267,7 +267,7 @@ class SubmissionClientSpec
       )
 
       val result = Await.result(
-        client(maxRetries = 2).submitTransfer(stcId, correlationId, minimalRequest),
+        client(maxRetries = 2).submitTransfer(subscriptionId, correlationId, minimalRequest),
         5.seconds
       )
 

@@ -40,7 +40,7 @@ trait SubmissionConnector:
    *   - Response ordering is not guaranteed; callers should correlate by `recordId`.
    */
   def submitTransfers(
-    stcId: String,
+    subscriptionId: String,
     submissionId: String,
     correlationId: String,
     declaration: SingleTransferDeclaration,
@@ -61,16 +61,16 @@ class SubmissionConnectorImpl @Inject()(
   private val FailedSubmissionErrorText = "Failed to submit transfer to ETMP"
 
   override def submitTransfers(
-    stcId: String,
+    subscriptionId: String,
     submissionId: String,
     correlationId: String,
     declaration: SingleTransferDeclaration,
     transfers: Seq[SingleTransferRequest]
   )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
-    submitTransfersInternal(stcId, submissionId, correlationId, declaration, transfers)
+    submitTransfersInternal(subscriptionId, submissionId, correlationId, declaration, transfers)
 
   private def submitTransfersInternal(
-    stcId: String,
+    subscriptionId: String,
     submissionId: String,
     correlationId: String,
     declaration: SingleTransferDeclaration,
@@ -81,14 +81,14 @@ class SubmissionConnectorImpl @Inject()(
     val requests = transformer.toRequests(transfers, declaration, submissionId)
     val requestChunks = requests.grouped(maxConcurrentCalls).toSeq
 
-    submitChunks(stcId, correlationId, requestChunks)
+    submitChunks(subscriptionId, correlationId, requestChunks)
       .map(_.flatten)
 
   private def maxConcurrentCalls: Int =
     math.max(1, appConfig.etmpCreateMaxConcurrentCalls)
 
   private def submitChunks(
-    stcId: String,
+    subscriptionId: String,
     correlationId: String,
     requestChunks: Seq[Seq[StcTransactionCreateRequest]]
   )(using hc: HeaderCarrier): Future[ChunkResponses] =
@@ -96,24 +96,24 @@ class SubmissionConnectorImpl @Inject()(
       (accResponsesF, requestChunk) =>
         for {
           accResponses <- accResponsesF
-          chunkResponses <- submitChunk(stcId, correlationId, requestChunk)
+          chunkResponses <- submitChunk(subscriptionId, correlationId, requestChunk)
         } yield accResponses ++ chunkResponses
     }
 
   private def submitChunk(
-    stcId: String,
+    subscriptionId: String,
     correlationId: String,
     requestChunk: Seq[StcTransactionCreateRequest]
   )(using hc: HeaderCarrier): Future[ChunkResponses] =
-    Future.sequence(requestChunk.map(submitSingleBatch(stcId, correlationId, _)))
+    Future.sequence(requestChunk.map(submitSingleBatch(subscriptionId, correlationId, _)))
 
   private def submitSingleBatch(
-    stcId: String,
+    subscriptionId: String,
     correlationId: String,
     request: StcTransactionCreateRequest
   )(using hc: HeaderCarrier): Future[SingleTransferResponses] =
     client
-      .submitTransfer(stcId, correlationId, request)
+      .submitTransfer(subscriptionId, correlationId, request)
       .map(response => transformer.toSingleTransferResponses(request, response))
       .recover(recoverSubmissionFailure(request))
 

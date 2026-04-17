@@ -31,7 +31,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
 trait SubmissionClient:
-  def submitTransfer(stcId: String, correlationId: String, request: StcTransactionCreateRequest)(using
+  def submitTransfer(subscriptionId: String, correlationId: String, request: StcTransactionCreateRequest)(using
     HeaderCarrier
   ): Future[StcTransactionCreateResponse]
 
@@ -47,26 +47,26 @@ class SubmissionClientImpl @Inject() (
   private val dateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 
   override def submitTransfer(
-    stcId: String, correlationId: String, request: StcTransactionCreateRequest)(
+    subscriptionId: String, correlationId: String, request: StcTransactionCreateRequest)(
     using hc: HeaderCarrier
   ): Future[StcTransactionCreateResponse] =
     val receiptDate = dateTimeFormatter.format(Instant.now(clock))
 
-    submitTransferWithRetry(stcId, correlationId, request, receiptDate, retryAttempt = 0)
+    submitTransferWithRetry(subscriptionId, correlationId, request, receiptDate, retryAttempt = 0)
       .map(StcTransactionCreateResponse.fromHttpResponse)
 
   private def submitTransferWithRetry(
-    stcId: String,
+    subscriptionId: String,
     correlationId: String,
     request: StcTransactionCreateRequest,
     receiptDate: String,
     retryAttempt: Int
   )(using hc: HeaderCarrier): Future[HttpResponse] =
-    doSubmitTransfer(stcId, correlationId, request, receiptDate).flatMap { response =>
+    doSubmitTransfer(subscriptionId, correlationId, request, receiptDate).flatMap { response =>
       if (isRetriable5xx(response.status) && retryAttempt < appConfig.etmpCreateMaxRetries) {
         val nextDelay = backoffDelayForAttempt(retryAttempt)
         after(nextDelay, actorSystem.scheduler)(
-          submitTransferWithRetry(stcId, correlationId, request, receiptDate, retryAttempt + 1)
+          submitTransferWithRetry(subscriptionId, correlationId, request, receiptDate, retryAttempt + 1)
         )
       } else {
         Future.successful(response)
@@ -74,13 +74,13 @@ class SubmissionClientImpl @Inject() (
     }
 
   private def doSubmitTransfer(
-    stcId: String,
+    subscriptionId: String,
     correlationId: String,
     request: StcTransactionCreateRequest,
     receiptDate: String
   )(using hc: HeaderCarrier): Future[HttpResponse] =
     httpClientV2
-      .post(url"${appConfig.etmpTransactionBaseUrl}/RESTAdapter/stc/transaction/$stcId")
+      .post(url"${appConfig.etmpTransactionBaseUrl}/RESTAdapter/stc/transaction/$subscriptionId")
       .setHeader(
         "correlationid" -> correlationId,
         "X-Originating-System" -> appConfig.etmpOriginatingSystem,

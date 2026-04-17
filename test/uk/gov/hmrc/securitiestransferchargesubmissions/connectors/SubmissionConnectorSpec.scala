@@ -101,7 +101,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
 
     val submissionClient = new SubmissionClient:
       override def submitTransfer(
-        stcId: String,
+        subscriptionId: String,
         correlationId: String,
         request: StcTransactionCreateRequest
       )(using uk.gov.hmrc.http.HeaderCarrier): Future[StcTransactionCreateResponse] =
@@ -143,7 +143,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
 
     val submissionClient = new SubmissionClient:
       override def submitTransfer(
-        stcId: String,
+        subscriptionId: String,
         correlationId: String,
         request: StcTransactionCreateRequest
       )(using uk.gov.hmrc.http.HeaderCarrier): Future[StcTransactionCreateResponse] =
@@ -253,7 +253,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
 
       val submissionClient = new SubmissionClient:
         override def submitTransfer(
-          stcId: String,
+          subscriptionId: String,
           correlationId: String,
           request: StcTransactionCreateRequest
         )(using uk.gov.hmrc.http.HeaderCarrier): Future[StcTransactionCreateResponse] =
@@ -294,7 +294,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
 
       val submissionClient = new SubmissionClient:
         override def submitTransfer(
-          stcId: String,
+          subscriptionId: String,
           correlationId: String,
           request: StcTransactionCreateRequest
         )(using uk.gov.hmrc.http.HeaderCarrier): Future[StcTransactionCreateResponse] =

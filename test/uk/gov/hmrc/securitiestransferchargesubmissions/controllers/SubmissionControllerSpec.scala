@@ -51,7 +51,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private val successConnector = new SubmissionConnector:
 
     override def submitTransfers(
-      stcId: String,
+      subscriptionId: String,
       submissionId: String,
       correlationId: String,
       declaration: SingleTransferDeclaration,
@@ -64,7 +64,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private val failingConnector = new SubmissionConnector:
 
     override def submitTransfers(
-      stcId: String,
+      subscriptionId: String,
       submissionId: String,
       correlationId: String,
       declaration: SingleTransferDeclaration,
