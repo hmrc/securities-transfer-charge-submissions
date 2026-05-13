@@ -13,7 +13,7 @@ lazy val microservice = Project("securities-transfer-charge-submissions", file("
     // https://www.scala-lang.org/2021/01/12/configuring-and-suppressing-warnings.html
     // suppress warnings in generated routes files
     scalacOptions += "-Wconf:src=routes/.*:s",
-    PlayKeys.devSettings += "play.server.http.port" -> "30034",
+    PlayKeys.playDefaultPort :=30034
   )
   .settings(CodeCoverageSettings.settings: _*)
 
