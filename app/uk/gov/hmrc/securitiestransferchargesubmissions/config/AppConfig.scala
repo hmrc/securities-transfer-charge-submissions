@@ -62,3 +62,15 @@ class AppConfig @Inject()(config: Configuration):
   val etmpCreateMaxConcurrentCalls: Int = config
     .getOptional[Int]("microservice.services.etmp-transaction.create.max-concurrent-calls")
     .getOrElse(3)
+
+  // NRS Configuration
+  private val nrsHost = config.get[String]("microservice.services.nrs.host")
+  private val nrsPort = config.get[Int]("microservice.services.nrs.port")
+  private val nrsProtocol = config.getOptional[String]("microservice.services.nrs.protocol").getOrElse("http")
+
+  val nrsBaseUrl: String = s"$nrsProtocol://$nrsHost:$nrsPort/nrs-orchestrator"
+  val nrsApiKey: String = config.get[String]("microservice.services.nrs.api-key")
+  
+  val nrsRetryDelays: Seq[FiniteDuration] = config
+    .get[Seq[String]]("nrs.retries")
+    .map(scala.concurrent.duration.Duration(_).asInstanceOf[FiniteDuration])
