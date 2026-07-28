@@ -27,18 +27,27 @@ import play.api.libs.json.Json
 import play.api.mvc.ControllerComponents
 import play.api.test.Helpers.{contentAsJson, defaultAwaitTimeout, status, stubControllerComponents}
 import play.api.test.{FakeRequest, Helpers}
+import uk.gov.hmrc.auth.core.AuthConnector
+import uk.gov.hmrc.auth.core.authorise.Predicate
+import uk.gov.hmrc.auth.core.retrieve.Retrieval
+import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.*
 import NrsTestData._
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.NrsService
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 class NrsControllerSpec extends AnyWordSpec with Matchers with MockitoSugar with BeforeAndAfterEach {
   
   private val mockNrsService = mock[NrsService]
+  private val mockAuthConnector = mock[AuthConnector]
   private val cc: ControllerComponents = stubControllerComponents()
 
-  private val controller = new NrsController(cc, mockNrsService)
+  when(mockAuthConnector.authorise[Unit](any[Predicate], any[Retrieval[Unit]])(any[HeaderCarrier], any[ExecutionContext]))
+    .thenReturn(Future.successful(()))
+
+  private implicit val ec: ExecutionContext = ExecutionContext.global
+  private val controller = new NrsController(cc, mockNrsService, mockAuthConnector)
 
   override def beforeEach(): Unit = {
     super.beforeEach()

@@ -19,41 +19,45 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
 import play.api.Logging
 import play.api.libs.json.{JsValue, Json}
 import play.api.mvc.{Action, ControllerComponents}
+import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.{NrsBulkSubmissionRequest, NrsSingleSubmissionRequest}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.NrsService
 
 import javax.inject.{Inject, Singleton}
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
 class NrsController @Inject()(
   cc: ControllerComponents,
-  nrsService: NrsService
-) extends BackendController(cc) with Logging {
+  nrsService: NrsService,
+  val authConnector: AuthConnector
+)(implicit ec: ExecutionContext) extends BackendController(cc) with AuthorisedFunctions with Logging {
 
   /**
    * Endpoint to receive single (HTML) submission from frontend
    * POST /nrs/single
    */
   def submitSingle(): Action[JsValue] = Action.async(parse.json) { implicit request =>
-    request.body.validate[NrsSingleSubmissionRequest].fold(
-      errors => {
-        logger.warn(s"Invalid single NRS submission request: $errors")
-        Future.successful(BadRequest(Json.obj(
-          "statusCode" -> 400,
-          "message" -> "Invalid request format",
-          "errors" -> errors.toString()
-        )))
-      },
-      nrsRequest => {
-        nrsService.submitSingle(nrsRequest)
-        
-        Future.successful(Accepted(Json.obj(
-          "message" -> "Single submission accepted for NRS processing"
-        )))
-      }
-    )
+    authorised() {
+      request.body.validate[NrsSingleSubmissionRequest].fold(
+        errors => {
+          logger.warn(s"Invalid single NRS submission request: $errors")
+          Future.successful(BadRequest(Json.obj(
+            "statusCode" -> 400,
+            "message" -> "Invalid request format",
+            "errors" -> errors.toString()
+          )))
+        },
+        nrsRequest => {
+          nrsService.submitSingle(nrsRequest)
+          
+          Future.successful(Accepted(Json.obj(
+            "message" -> "Single submission accepted for NRS processing"
+          )))
+        }
+      )
+    }
   }
 
   /**
@@ -61,22 +65,24 @@ class NrsController @Inject()(
    * POST /nrs/bulk
    */
   def submitBulk(): Action[JsValue] = Action.async(parse.json) { implicit request =>
-    request.body.validate[NrsBulkSubmissionRequest].fold(
-      errors => {
-        logger.warn(s"Invalid bulk NRS submission request: $errors")
-        Future.successful(BadRequest(Json.obj(
-          "statusCode" -> 400,
-          "message" -> "Invalid request format",
-          "errors" -> errors.toString()
-        )))
-      },
-      nrsRequest => {
-        nrsService.submitBulk(nrsRequest)
-        
-        Future.successful(Accepted(Json.obj(
-          "message" -> "Bulk submission accepted for NRS processing"
-        )))
-      }
-    )
+    authorised() {
+      request.body.validate[NrsBulkSubmissionRequest].fold(
+        errors => {
+          logger.warn(s"Invalid bulk NRS submission request: $errors")
+          Future.successful(BadRequest(Json.obj(
+            "statusCode" -> 400,
+            "message" -> "Invalid request format",
+            "errors" -> errors.toString()
+          )))
+        },
+        nrsRequest => {
+          nrsService.submitBulk(nrsRequest)
+          
+          Future.successful(Accepted(Json.obj(
+            "message" -> "Bulk submission accepted for NRS processing"
+          )))
+        }
+      )
+    }
   }
 }
