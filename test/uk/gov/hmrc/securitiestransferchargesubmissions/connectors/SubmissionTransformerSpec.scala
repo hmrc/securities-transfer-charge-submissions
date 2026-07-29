@@ -16,42 +16,22 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
-import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpec
-import play.api.Configuration
+import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, ReasonForPurchase, TfBoolean, TransferType}
 
 import java.time.LocalDate
 
-class SubmissionTransformerSpec extends AnyWordSpec with Matchers:
-
-  private val appConfig = new AppConfig(
-    Configuration.from(
-      Map(
-        "appName" -> "test",
-        "microservice.services.etmp-transaction.host" -> "localhost",
-        "microservice.services.etmp-transaction.port" -> 123,
-        "microservice.services.etmp-transaction.create.max-records-per-request" -> 12,
-        "microservice.services.etmp-transaction.create.max-concurrent-calls" -> 3
-      )
-    )
-  )
+class SubmissionTransformerSpec extends SpecBase:
 
   private val transformer = new SubmissionTransformer(appConfig)
 
-  private val appConfigMax3 = new AppConfig(
-    Configuration.from(
-      Map(
-        "appName" -> "test",
-        "microservice.services.etmp-transaction.host" -> "localhost",
-        "microservice.services.etmp-transaction.port" -> 123,
-        "microservice.services.etmp-transaction.create.max-records-per-request" -> 3,
-        "microservice.services.etmp-transaction.create.max-concurrent-calls" -> 3
-      )
-    )
+  private val appConfigMax3 = appConfigWithOverrides(
+    """
+      |microservice.services.etmp-transaction.create.max-records-per-request = 3
+      |microservice.services.etmp-transaction.create.max-concurrent-calls = 3
+      |""".stripMargin
   )
 
   private val transformerMax3 = new SubmissionTransformer(appConfigMax3)

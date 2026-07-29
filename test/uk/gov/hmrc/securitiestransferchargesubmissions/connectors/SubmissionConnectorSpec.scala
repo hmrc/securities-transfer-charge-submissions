@@ -16,10 +16,8 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
-import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpec
-import play.api.Configuration
 import uk.gov.hmrc.http.HeaderCarrier
+import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
@@ -34,7 +32,7 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.collection.mutable.ArrayBuffer
 
-class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
+class SubmissionConnectorSpec extends SpecBase:
 
   given HeaderCarrier = HeaderCarrier()
 
@@ -52,17 +50,12 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
     isCorrectInfo = true
   )
 
-  private def appConfig(maxRecordsPerRequest: Int, maxConcurrentCalls: Int = 1): AppConfig =
-    new AppConfig(
-      Configuration.from(
-        Map(
-          "appName" -> "test",
-          "microservice.services.etmp-transaction.host" -> "localhost",
-          "microservice.services.etmp-transaction.port" -> 123,
-          "microservice.services.etmp-transaction.create.max-records-per-request" -> maxRecordsPerRequest,
-          "microservice.services.etmp-transaction.create.max-concurrent-calls" -> maxConcurrentCalls
-        )
-      )
+  private def appConfigForTest(maxRecordsPerRequest: Int, maxConcurrentCalls: Int = 1): AppConfig =
+    appConfigWithOverrides(
+      s"""
+         |microservice.services.etmp-transaction.create.max-records-per-request = $maxRecordsPerRequest
+         |microservice.services.etmp-transaction.create.max-concurrent-calls = $maxConcurrentCalls
+         |""".stripMargin
     )
 
   private def singleRequest(recordId: Int): SingleTransferRequest =
@@ -95,7 +88,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
     )
 
   private def connectorWithStubClient(maxRecordsPerRequest: Int): (SubmissionConnectorImpl, AtomicInteger, ArrayBuffer[Int]) =
-    val cfg = appConfig(maxRecordsPerRequest)
+    val cfg = appConfigForTest(maxRecordsPerRequest)
     val callCount = new AtomicInteger(0)
     val batchSizes = ArrayBuffer.empty[Int]
 
@@ -137,7 +130,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
     maxConcurrentCalls: Int,
     delayMs: Long
   ): (SubmissionConnectorImpl, AtomicInteger) =
-    val cfg = appConfig(maxRecordsPerRequest, maxConcurrentCalls)
+    val cfg = appConfigForTest(maxRecordsPerRequest, maxConcurrentCalls)
     val inFlight = new AtomicInteger(0)
     val maxObserved = new AtomicInteger(0)
 
@@ -249,7 +242,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       maxObserved.get() shouldBe 1
 
     "return one response per input and synthesize 500 failures for downstream batch errors" in:
-      val cfg = appConfig(maxRecordsPerRequest = 2)
+      val cfg = appConfigForTest(maxRecordsPerRequest = 2)
 
       val submissionClient = new SubmissionClient:
         override def submitTransfer(
@@ -288,7 +281,7 @@ class SubmissionConnectorSpec extends AnyWordSpec with Matchers:
       result.collect { case StcChargeFailure(recordId, "500", "Failed to submit transfer to ETMP") => recordId }.toSet shouldBe Set(3, 4)
 
     "return matching responses even when ETMP futures complete out of order" in:
-      val cfg = appConfig(maxRecordsPerRequest = 1, maxConcurrentCalls = 3)
+      val cfg = appConfigForTest(maxRecordsPerRequest = 1, maxConcurrentCalls = 3)
       val completionOrder = ArrayBuffer.empty[Int]
       val promises = (1 to 3).map(recordId => recordId -> Promise[StcTransactionCreateResponse]()).toMap
 

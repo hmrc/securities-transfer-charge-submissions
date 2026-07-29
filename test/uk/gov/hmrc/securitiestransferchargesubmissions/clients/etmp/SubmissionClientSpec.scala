@@ -20,12 +20,10 @@ import com.github.tomakehurst.wiremock.client.WireMock.*
 import com.github.tomakehurst.wiremock.stubbing.Scenario
 import org.apache.pekko.actor.ActorSystem
 import org.scalatest.BeforeAndAfterAll
-import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpec
-import play.api.Configuration
 import play.api.libs.json.Json
 import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
+import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TfBoolean, TransferType}
 
@@ -35,8 +33,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.DurationInt
 
 class SubmissionClientSpec
-    extends AnyWordSpec
-    with Matchers
+    extends SpecBase
     with WireMockSupport
     with HttpClientV2Support
     with BeforeAndAfterAll:
@@ -50,21 +47,21 @@ class SubmissionClientSpec
 
   private val subscriptionId = "stc-123"
   private val correlationId = "corr-456"
-  private val path          = s"/RESTAdapter/stc/transaction/$subscriptionId"
+  private val path          = s"/securities-transfer-charge-stubs/RESTAdapter/stc/transaction/$subscriptionId"
 
-  private def appConfig(maxRetries: Int = 0, initialBackoffMs: Long = 0): AppConfig =
-    new AppConfig(Configuration.from(Map(
-      "appName"                                                                           -> "test",
-      "microservice.services.etmp-transaction.host"                                      -> wireMockHost,
-      "microservice.services.etmp-transaction.port"                                      -> wireMockPort,
-      "microservice.services.etmp-transaction.create.max-records-per-request"            -> 12,
-      "microservice.services.etmp-transaction.create.max-concurrent-calls"               -> 3,
-      "microservice.services.etmp-transaction.create.max-retries"                        -> maxRetries,
-      "microservice.services.etmp-transaction.create.initial-backoff-ms"                 -> initialBackoffMs
-    )))
+  private def appConfigForWireMock(maxRetries: Int = 0, initialBackoffMs: Long = 0): AppConfig =
+    appConfigWithOverrides(
+      s"""
+         |microservice.services.etmp-transaction.host = $wireMockHost
+         |microservice.services.etmp-transaction.port = $wireMockPort
+         |microservice.services.etmp-transaction.prefix = "securities-transfer-charge-stubs"
+         |microservice.services.etmp-transaction.create.max-retries = $maxRetries
+         |microservice.services.etmp-transaction.create.initial-backoff-ms = $initialBackoffMs
+         |""".stripMargin
+    )
 
   private def client(maxRetries: Int = 0, initialBackoffMs: Long = 0): SubmissionClientImpl =
-    new SubmissionClientImpl(httpClientV2, appConfig(maxRetries, initialBackoffMs), fixedClock, actorSystem)
+    new SubmissionClientImpl(httpClientV2, appConfigForWireMock(maxRetries, initialBackoffMs), fixedClock, actorSystem)
 
   // ---------------------------------------------------------------------------
   // Fixtures
@@ -202,7 +199,7 @@ class SubmissionClientSpec
       )
 
       val result = Await.result(
-        client(maxRetries = 1, initialBackoffMs = 0).submitTransfer(subscriptionId, correlationId, minimalRequest),
+        client(maxRetries = 1).submitTransfer(subscriptionId, correlationId, minimalRequest),
         5.seconds
       )
 
@@ -216,7 +213,7 @@ class SubmissionClientSpec
       )
 
       val exception = the[UpstreamErrorResponse] thrownBy Await.result(
-        client(maxRetries = 2, initialBackoffMs = 0).submitTransfer(subscriptionId, correlationId, minimalRequest),
+        client(maxRetries = 2).submitTransfer(subscriptionId, correlationId, minimalRequest),
         5.seconds
       )
 
