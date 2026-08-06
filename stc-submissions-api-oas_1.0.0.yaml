@@ -291,15 +291,15 @@ components:
           description: "First line of address"
         addr2:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Second line of address"
         addr3:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Third line of address"
         addr4:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Fourth line of address"
         postcode:
           type: "string"
@@ -308,8 +308,8 @@ components:
           description: "Postal code"
         country:
           type: "string"
-          minLength: 2
-          maxLength: 2
+          minLength: 1
+          maxLength: 100
           description: "ISO 3166-1 alpha-2 country code"
         selfDeclarationAgent:
           type: "boolean"
@@ -480,15 +480,15 @@ components:
           description: "First line of seller's address"
         addr2:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Second line of seller's address"
         addr3:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Third line of seller's address"
         addr4:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Fourth line of seller's address"
         postcode:
           type: "string"
@@ -497,9 +497,9 @@ components:
           description: "Seller's postal code"
         country:
           type: "string"
-          minLength: 2
-          maxLength: 2
-          description: "Seller's country (ISO 3166-1 alpha-2)"
+          minLength: 1
+          maxLength: 100
+          description: "Seller's country"
       description: "Details of the main seller"
     SingleTransferOtherSellerName:
       type: "object"
@@ -534,15 +534,15 @@ components:
           description: "First line of buyer's address"
         addr2:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Second line of buyer's address"
         addr3:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Third line of buyer's address"
         addr4:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Fourth line of buyer's address"
         postcode:
           type: "string"
@@ -551,9 +551,9 @@ components:
           description: "Buyer's postal code"
         country:
           type: "string"
-          minLength: 2
-          maxLength: 2
-          description: "Buyer's country (ISO 3166-1 alpha-2)"
+          minLength: 1
+          maxLength: 100
+          description: "Buyer's country"
         email:
           type: "string"
           format: "email"
@@ -604,15 +604,15 @@ components:
           description: "First line of agent's address"
         addr2:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Second line of agent's address"
         addr3:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Third line of agent's address"
         addr4:
           type: "string"
-          maxLength: 100
+          maxLength: 40
           description: "Fourth line of agent's address"
         postcode:
           type: "string"
@@ -621,9 +621,9 @@ components:
           description: "Agent's postal code"
         country:
           type: "string"
-          minLength: 2
-          maxLength: 2
-          description: "Agent's country (ISO 3166-1 alpha-2)"
+          minLength: 1
+          maxLength: 100
+          description: "Agent's country"
         phone:
           type: "string"
           minLength: 1
