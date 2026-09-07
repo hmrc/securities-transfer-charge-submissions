@@ -148,7 +148,7 @@ class SubmissionIntegrationSpec
           .post(payload)
           .futureValue
 
-        response.status shouldBe 200
+        response.status shouldBe 201
         val charges = response.json.as[List[play.api.libs.json.JsObject]]
         charges should have size 1
         (charges.head \ "recordId").as[Int] shouldBe 1
@@ -399,7 +399,7 @@ class SubmissionIntegrationSpec
           .post(payload)
           .futureValue
 
-        response.status shouldBe 200
+        response.status shouldBe 201
         val charges = response.json.as[List[play.api.libs.json.JsObject]]
         charges should have size 2
         charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(1, 2)
@@ -516,7 +516,7 @@ class SubmissionIntegrationSpec
           .post(payload)
           .futureValue
 
-        response.status shouldBe 200
+        response.status shouldBe 201
         val charges = response.json.as[List[play.api.libs.json.JsObject]]
         charges should have size 2
         charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(10, 11)

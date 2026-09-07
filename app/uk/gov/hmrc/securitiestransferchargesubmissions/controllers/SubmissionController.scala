@@ -50,7 +50,7 @@ class SubmissionController @Inject()(
               declaration = payload.declaration,
               transfers = payload.transfers
             )
-            .map(responses => Ok(Json.toJson(responses)))
+            .map(responses => Created(Json.toJson(responses)))
             .recover(handleClientMappingErrors)
     }
   }
