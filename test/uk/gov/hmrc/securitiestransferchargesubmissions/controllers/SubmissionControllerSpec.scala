@@ -146,14 +146,14 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
     SubmissionBatchPayload(declaration = declaration, transfers = transfers)
 
   "SubmissionController.submitBatchAction" should:
-    "return 200 for a valid single-record request list" in:
+    "return 201 for a valid single-record request list" in:
       val request = FakeRequest("POST", "/submission/sub-123")
         .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
         .withJsonBody(Json.toJson(payload(Seq(singleRequest(1)))))
 
       val result = controller.submitBatchAction("sub-123").apply(request)
 
-      status(result) shouldBe OK
+      status(result) shouldBe CREATED
       contentAsString(result) should include("\"recordId\":1")
       contentAsString(result) should include("\"utrn\":\"utrn-1\"")
 
@@ -236,7 +236,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
       val result = controller.submitBatchAction("sub-123").apply(request)
 
-      status(result) shouldBe OK
+      status(result) shouldBe CREATED
 
     "return 400 when recordIds are duplicated" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -258,7 +258,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
       val result = controllerWithFailure.submitBatchAction("sub-123").apply(request)
 
-      status(result) shouldBe OK
+      status(result) shouldBe CREATED
       val responseBody = contentAsString(result)
       responseBody should include("\"recordId\":1")
       responseBody should include("\"errorCode\":\"400\"")
