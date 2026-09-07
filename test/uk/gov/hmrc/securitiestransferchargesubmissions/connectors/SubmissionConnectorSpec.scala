@@ -80,7 +80,7 @@ class SubmissionConnectorSpec extends SpecBase:
         reliefPercentage = None
       ),
       contingentDetails = None,
-      mainSellerDetails = SingleTransferSellerDetails("Seller Ltd", "addr1", None, None, None, "AA11AA", "GB"),
+      mainSellerDetails = Some(SingleTransferSellerDetails("Seller Ltd", "addr1", None, None, None, "AA11AA", "GB")),
       otherSellers = None,
       mainBuyerDetails = SingleTransferBuyerDetails("Buyer Ltd", "addr1", None, None, None, "BB11BB", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None),
       otherBuyers = None,

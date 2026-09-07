@@ -132,18 +132,19 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
         }
         if all.isEmpty then None else Some(all)
       },
-      mainSellerDetails = batch.map { r =>
-        val sd = r.mainSellerDetails
-        SellerDetailsCreate(
-          recordId   = r.recordId,
-          sellerName = sd.sellerName,
-          addr1      = sd.addr1,
-          addr2      = sd.addr2,
-          addr3      = sd.addr3,
-          addr4      = sd.addr4,
-          postcode   = sd.postcode,
-          country    = sd.country
-        )
+      mainSellerDetails = batch.flatMap { r =>
+        r.mainSellerDetails.map { sd =>
+          SellerDetailsCreate(
+            recordId = r.recordId,
+            sellerName = sd.sellerName,
+            addr1 = sd.addr1,
+            addr2 = sd.addr2,
+            addr3 = sd.addr3,
+            addr4 = sd.addr4,
+            postcode = sd.postcode,
+            country = sd.country
+          )
+        }
       },
       otherSellers = {
         val all = batch.flatMap { r =>
