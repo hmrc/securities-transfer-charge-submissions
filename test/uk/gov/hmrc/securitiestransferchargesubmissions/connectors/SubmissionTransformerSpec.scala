@@ -74,7 +74,7 @@ class SubmissionTransformerSpec extends SpecBase:
         reliefPercentage = None
       ),
       contingentDetails = None,
-      mainSellerDetails = SingleTransferSellerDetails("seller", "addr1", None, None, None, "AA11AA", "GB"),
+      mainSellerDetails = Some(SingleTransferSellerDetails("seller", "addr1", None, None, None, "AA11AA", "GB")),
       otherSellers = None,
       mainBuyerDetails = SingleTransferBuyerDetails("buyer", "addr1", None, None, None, "AA11AA", "GB", "buyer@test.com", None, BuyerTaxRate.HalfPercent, None),
       otherBuyers = None,

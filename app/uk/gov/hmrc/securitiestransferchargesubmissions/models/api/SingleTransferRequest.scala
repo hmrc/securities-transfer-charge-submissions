@@ -28,7 +28,7 @@ final case class SingleTransferRequest(
   recordId: Int,
   transactionDetails: SingleTransferTransactionDetails,
   contingentDetails: Option[Seq[SingleTransferContingentDetails]],
-  mainSellerDetails: SingleTransferSellerDetails,
+  mainSellerDetails: Option[SingleTransferSellerDetails],
   otherSellers: Option[Seq[SingleTransferOtherSellerName]],
   mainBuyerDetails: SingleTransferBuyerDetails,
   otherBuyers: Option[Seq[SingleTransferOtherBuyerName]],
@@ -97,7 +97,7 @@ final case class SingleTransferOtherBuyerName(
 
 final case class SingleTransferAgentDetails(
   name: String,
-  addr1: String,
+  addr1: Option[String],
   addr2: Option[String],
   addr3: Option[String],
   addr4: Option[String],
@@ -105,7 +105,7 @@ final case class SingleTransferAgentDetails(
   country: String,
   phone: String,
   email: String,
-  clientReference: String
+  clientReference: Option[String]
 )
 
 final case class SingleTransferDeclaration(

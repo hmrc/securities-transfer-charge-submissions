@@ -105,7 +105,7 @@ final case class OtherBuyerCreateName(
 
 final case class AgentDetailsCreate(
   name: String,
-  addr1: String,
+  addr1: Option[String],
   addr2: Option[String],
   addr3: Option[String],
   addr4: Option[String],
@@ -113,7 +113,7 @@ final case class AgentDetailsCreate(
   country: String,
   phone: String,
   email: String,
-  clientReference: String
+  clientReference: Option[String]
 )
 
 final case class DeclarationCreate(

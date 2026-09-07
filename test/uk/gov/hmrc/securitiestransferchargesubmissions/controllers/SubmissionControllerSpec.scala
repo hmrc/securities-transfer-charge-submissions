@@ -25,7 +25,7 @@ import play.api.libs.json.{JsArray, JsError, JsValue, Json}
 import play.api.mvc.AnyContentAsText
 import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
-import uk.gov.hmrc.auth.core.{AuthConnector}
+import uk.gov.hmrc.auth.core.AuthConnector
 import uk.gov.hmrc.auth.core.authorise.Predicate
 import uk.gov.hmrc.auth.core.retrieve.Retrieval
 import uk.gov.hmrc.http.HeaderCarrier
@@ -101,7 +101,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         reliefPercentage = None
       ),
       contingentDetails = None,
-      mainSellerDetails = SingleTransferSellerDetails(
+      mainSellerDetails = Some(SingleTransferSellerDetails(
         sellerName = "Seller Ltd",
         addr1 = "seller line 1",
         addr2 = Some("seller line 2"),
@@ -109,7 +109,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         addr4 = None,
         postcode = "ZZ11ZZ",
         country = "GB"
-      ),
+      )),
       otherSellers = None,
       mainBuyerDetails = SingleTransferBuyerDetails(
         buyerName = "Buyer Ltd",
