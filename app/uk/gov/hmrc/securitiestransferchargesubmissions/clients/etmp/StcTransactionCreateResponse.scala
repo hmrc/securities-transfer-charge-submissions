@@ -95,6 +95,17 @@ object StcTransactionCreateResponse:
     case f: StcChargeFailure => Json.toJson(f)
   }
 
+  given Writes[StcTransactionCreateProcessedBody] = Json.writes[StcTransactionCreateProcessedBody]
+  given Writes[StcTransactionCreateProcessed] = Json.writes[StcTransactionCreateProcessed]
+
+  given Writes[StcTransactionCreateBusinessErrorBody] = Json.writes[StcTransactionCreateBusinessErrorBody]
+  given Writes[StcTransactionCreateBusinessError] = Json.writes[StcTransactionCreateBusinessError]
+
+  given Writes[StcTransactionCreateBadRequestBody] = Json.writes[StcTransactionCreateBadRequestBody]
+  given Writes[StcTransactionCreateBadRequest] = Json.writes[StcTransactionCreateBadRequest]
+  
+  given Writes[StcTransactionCreateResponse] = Json.writes[StcTransactionCreateResponse]
+  
   def fromHttpResponse(response: HttpResponse): StcTransactionCreateResponse =
     response.status match
       case 201 =>
