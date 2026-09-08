@@ -16,7 +16,7 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
-import play.api.libs.json.{JsDefined, JsError, JsSuccess, Json, Reads, Writes}
+import play.api.libs.json.*
 import uk.gov.hmrc.http.{HttpResponse, UpstreamErrorResponse}
 
 sealed trait StcTransactionCreateResponse
@@ -28,25 +28,6 @@ final case class StcTransactionCreateProcessedBody(
   processingDate: String,
   charges: List[StcCharge]
 )
-
-sealed trait StcCharge:
-  def recordId: Int
-
-final case class StcChargeSuccess(
-  recordId: Int,
-  utrn: String,
-  chargeTypeDescription: String,
-  chargeReference: String,
-  chargeType: String,
-  chargeAmount: BigDecimal,
-  chargeDueDate: String
-) extends StcCharge
-
-final case class StcChargeFailure(
-  recordId: Int,
-  errorCode: String,
-  errorText: String
-) extends StcCharge
 
 final case class StcTransactionCreateBadRequest(error: StcTransactionCreateBadRequestBody)
   extends StcTransactionCreateResponse
@@ -68,17 +49,6 @@ final case class StcTransactionCreateBusinessErrorBody(
 
 object StcTransactionCreateResponse:
 
-  given Reads[StcChargeSuccess] = Json.reads[StcChargeSuccess]
-  given Reads[StcChargeFailure] = Json.reads[StcChargeFailure]
-
-  given Reads[StcCharge] = Reads { json =>
-    (json \ "errorCode", json \ "errorText") match
-      case (JsDefined(_), JsDefined(_)) =>
-        summon[Reads[StcChargeFailure]].reads(json)
-      case _ =>
-        summon[Reads[StcChargeSuccess]].reads(json)
-  }
-
   given Reads[StcTransactionCreateProcessedBody] = Json.reads[StcTransactionCreateProcessedBody]
   given Reads[StcTransactionCreateProcessed] = Json.reads[StcTransactionCreateProcessed]
 
@@ -88,11 +58,16 @@ object StcTransactionCreateResponse:
   given Reads[StcTransactionCreateBusinessErrorBody] = Json.reads[StcTransactionCreateBusinessErrorBody]
   given Reads[StcTransactionCreateBusinessError] = Json.reads[StcTransactionCreateBusinessError]
 
-  given Writes[StcChargeSuccess] = Json.writes[StcChargeSuccess]
-  given Writes[StcChargeFailure] = Json.writes[StcChargeFailure]
-  given Writes[StcCharge] = Writes {
-    case s: StcChargeSuccess => Json.toJson(s)
-    case f: StcChargeFailure => Json.toJson(f)
+
+  given Reads[StcTransactionCreateResponse] = Reads { json =>
+    (json \ "success", json \ "error", json \ "errors") match
+      case (JsDefined(_), _, _) =>
+        summon[Reads[StcTransactionCreateProcessed]].reads(json)
+      case (_, JsDefined(_), _) =>
+        summon[Reads[StcTransactionCreateBadRequest]].reads(json)
+      case (_, _, JsDefined(_)) =>
+        summon[Reads[StcTransactionCreateBusinessError]].reads(json)
+      case _ => JsError("Cannot deserialise JSON into StcTransactionCreateResponse")
   }
 
   given Writes[StcTransactionCreateProcessedBody] = Json.writes[StcTransactionCreateProcessedBody]
@@ -103,9 +78,9 @@ object StcTransactionCreateResponse:
 
   given Writes[StcTransactionCreateBadRequestBody] = Json.writes[StcTransactionCreateBadRequestBody]
   given Writes[StcTransactionCreateBadRequest] = Json.writes[StcTransactionCreateBadRequest]
-  
+
   given Writes[StcTransactionCreateResponse] = Json.writes[StcTransactionCreateResponse]
-  
+
   def fromHttpResponse(response: HttpResponse): StcTransactionCreateResponse =
     response.status match
       case 201 =>
