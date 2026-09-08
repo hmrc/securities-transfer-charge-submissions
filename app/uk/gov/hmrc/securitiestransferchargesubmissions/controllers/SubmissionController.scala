@@ -16,17 +16,19 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
 
+import play.api.Logging
 import play.api.libs.json.*
 import play.api.mvc.*
+import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcCharge, StcTransactionCreateProcessed, StcTransactionCreateProcessedBody, StcTransactionCreateResponse}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConnector
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
-import uk.gov.hmrc.auth.core.AuthConnector
-import uk.gov.hmrc.auth.core.AuthorisedFunctions
 
+import java.time.LocalDate
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -35,14 +37,14 @@ class SubmissionController @Inject()(
   cc: ControllerComponents,
   submissionConnector: SubmissionConnector,
   val authConnector: AuthConnector
-)(using ec: ExecutionContext) extends BackendController(cc) with AuthorisedFunctions:
+)(using ec: ExecutionContext) extends BackendController(cc) with AuthorisedFunctions with Logging:
 
   def submitBatchAction(submissionId: String): Action[AnyContent] = Action.async { implicit request =>
     authorised() {
       validateRequest(request) match
         case Left(result) => Future.successful(result)
         case Right((correlationId, subscriptionId, payload)) =>
-          submissionConnector
+          val resps = submissionConnector
             .submitTransfers(
               subscriptionId = subscriptionId,
               submissionId = submissionId,
@@ -50,11 +52,23 @@ class SubmissionController @Inject()(
               declaration = payload.declaration,
               transfers = payload.transfers
             )
-            .map(responses => Created(Json.toJson(responses)))
-            .recover(handleClientMappingErrors)
-    }
-  }
 
+          val response: Future[StcTransactionCreateResponse] = resps.map { charges =>
+            StcTransactionCreateProcessed(
+              success = StcTransactionCreateProcessedBody(
+                processingDate = LocalDate.now().toString,
+                charges = charges.asInstanceOf[List[StcCharge]]
+              )
+            )
+          }
+          
+          val json = response.map(tx => Created(Json.toJson(tx)))
+
+          json.recover(handleClientMappingErrors)
+    }
+  }   
+      
+    
   private def validateRequest(
     request: Request[AnyContent]
   ): Either[Result, (String, String, SubmissionBatchPayload)] =
