@@ -26,7 +26,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.play.guice.GuiceOneServerPerSuite
 import play.api.Application
 import play.api.inject.guice.GuiceApplicationBuilder
-import play.api.libs.json.{JsArray, Json}
+import play.api.libs.json.{JsArray, JsValue, Json}
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.JsonBodyWritables.writeableOf_JsValue
 import play.api.libs.ws.DefaultBodyWritables.writeableOf_String
@@ -115,16 +115,18 @@ class SubmissionIntegrationSpec
         )
 
         val etmpResponse = Json.obj(
-          "processingDate" -> "2026-04-09T10:00:00Z",
-          "charges" -> Json.arr(
-            Json.obj(
-              "recordId" -> 1,
-              "utrn" -> "12345678",
-              "chargeTypeDescription" -> "Securities Transfer Charge",
-              "chargeReference" -> "XREF123",
-              "chargeType" -> "STC",
-              "chargeAmount" -> 100.00,
-              "chargeDueDate" -> "2026-05-09"
+          "success" -> Json.obj(
+            "processingDate" -> "2026-04-09T10:00:00Z",
+            "charges" -> Json.arr(
+              Json.obj(
+                "recordId" -> 1,
+                "utrn" -> "12345678",
+                "chargeTypeDescription" -> "Securities Transfer Charge",
+                "chargeReference" -> "XREF123",
+                "chargeType" -> "STC",
+                "chargeAmount" -> 100.00,
+                "chargeDueDate" -> "2026-05-09"
+              )
             )
           )
         )
@@ -149,7 +151,7 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 201
-        val charges = response.json.as[List[play.api.libs.json.JsObject]]
+        val charges = (response.json \ "success" \ "charges").as[List[JsValue]]
         charges should have size 1
         (charges.head \ "recordId").as[Int] shouldBe 1
         // Check if it's a success or failure response
@@ -400,7 +402,7 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 201
-        val charges = response.json.as[List[play.api.libs.json.JsObject]]
+        val charges = (response.json \ "success" \ "charges").as[List[JsValue]]
         charges should have size 2
         charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(1, 2)
         charges.map(c => (c \ "errorCode").as[String]) shouldBe List("400", "400")
@@ -474,25 +476,27 @@ class SubmissionIntegrationSpec
         )
 
         val etmpResponse = Json.obj(
-          "processingDate" -> "2026-04-09T10:00:00Z",
-          "charges" -> Json.arr(
-            Json.obj(
-              "recordId" -> 10,
-              "utrn" -> "11111111",
-              "chargeTypeDescription" -> "Securities Transfer Charge",
-              "chargeReference" -> "REF001",
-              "chargeType" -> "STC",
-              "chargeAmount" -> 100.00,
-              "chargeDueDate" -> "2026-05-09"
-            ),
-            Json.obj(
-              "recordId" -> 11,
-              "utrn" -> "22222222",
-              "chargeTypeDescription" -> "Securities Transfer Charge",
-              "chargeReference" -> "REF002",
-              "chargeType" -> "STC",
-              "chargeAmount" -> 200.00,
-              "chargeDueDate" -> "2026-05-09"
+          "success" -> Json.obj(
+            "processingDate" -> "2026-04-09T10:00:00Z",
+            "charges" -> Json.arr(
+              Json.obj(
+                "recordId" -> 10,
+                "utrn" -> "11111111",
+                "chargeTypeDescription" -> "Securities Transfer Charge",
+                "chargeReference" -> "REF001",
+                "chargeType" -> "STC",
+                "chargeAmount" -> 100.00,
+                "chargeDueDate" -> "2026-05-09"
+              ),
+              Json.obj(
+                "recordId" -> 11,
+                "utrn" -> "22222222",
+                "chargeTypeDescription" -> "Securities Transfer Charge",
+                "chargeReference" -> "REF002",
+                "chargeType" -> "STC",
+                "chargeAmount" -> 200.00,
+                "chargeDueDate" -> "2026-05-09"
+              )
             )
           )
         )
@@ -517,6 +521,6 @@ class SubmissionIntegrationSpec
           .futureValue
 
         response.status shouldBe 201
-        val charges = response.json.as[List[play.api.libs.json.JsObject]]
+        val charges = (response.json \ "success" \ "charges").as[List[play.api.libs.json.JsObject]]
         charges should have size 2
         charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(10, 11)
