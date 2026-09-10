@@ -32,7 +32,7 @@ final case class SingleTransferRequest(
   otherSellers: Option[Seq[SingleTransferOtherSellerName]],
   mainBuyerDetails: SingleTransferBuyerDetails,
   otherBuyers: Option[Seq[SingleTransferOtherBuyerName]],
-  agentDetails: Option[Seq[SingleTransferAgentDetails]]
+  agentDetails: Option[SingleTransferAgentDetails]
 )
 
 final case class SingleTransferTransactionDetails(

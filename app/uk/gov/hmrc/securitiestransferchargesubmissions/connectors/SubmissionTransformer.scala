@@ -181,7 +181,7 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
       },
       agentDetails = {
         val all = batch.flatMap { r =>
-          r.agentDetails.getOrElse(Seq.empty).map { ad =>
+          r.agentDetails.map { ad =>
             AgentDetailsCreate(
               name            = ad.name,
               addr1           = ad.addr1,
