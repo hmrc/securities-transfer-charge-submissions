@@ -18,16 +18,16 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.services
 
 import play.api.Logging
 import uk.gov.hmrc.http.HeaderCarrier
-import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.NrsConnector
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.{NrsBulkSubmissionRequest, NrsSubmission, NrsSingleSubmissionRequest, NrsSubmissionResponse}
+import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{NrsAttachmentResponse, NrsConnector}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.*
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
 class NrsService @Inject()(
-  nrsConnector: NrsConnector
-)(implicit ec: ExecutionContext) extends Logging {
+                            nrsConnector: NrsConnector
+                          )(implicit ec: ExecutionContext) extends Logging {
 
   /**
    * Submit single (HTML) submission to NRS
@@ -51,7 +51,7 @@ class NrsService @Inject()(
   }
 
   /**
-   * Submit bulk (XML) submission to NRS
+   * Submit bulk (HTML) submission to NRS with attachments
    * Fire-and-forget pattern - failures are logged but don't block the main flow
    */
   def submitBulk(request: NrsBulkSubmissionRequest)(implicit hc: HeaderCarrier): Future[Unit] = {
@@ -60,14 +60,50 @@ class NrsService @Inject()(
       metadata = request.metadata
     )
 
-    nrsConnector.submitToNrs(nrsSubmission).map {
-      case Some(resp) =>
-        logger.info(s"Bulk NRS submission completed successfully: ${resp.nrSubmissionId}")
+    nrsConnector.submitToNrs(nrsSubmission).flatMap {
+      case Some(submissionResp) =>
+        logger.info(s"Bulk NRS submission completed successfully: ${submissionResp.nrSubmissionId}")
+
+        submitAttachment(
+          submissionResp.nrSubmissionId,
+          request.metadata.businessId,
+          request.metadata.notableEvent,
+          request.attachments
+        ).map {
+          case Some(resp) =>
+            logger.info(s"NRS attachment submitted successfully: ${resp.attachmentId} for submission ${submissionResp.nrSubmissionId}")
+          case None =>
+            logger.warn(s"NRS attachment submission failed for submission ${submissionResp.nrSubmissionId}")
+        }.recover {
+          case ex: Exception =>
+            logger.error(s"Exception during NRS attachment submission for ${submissionResp.nrSubmissionId}: ${ex.getMessage}", ex)
+        }
+
       case None =>
         logger.warn("Bulk NRS submission failed - continuing with main flow")
+        Future.successful(())
     }.recover {
       case ex: Exception =>
         logger.error(s"Exception during bulk NRS submission: ${ex.getMessage}", ex)
     }
+  }
+
+  private def submitAttachment(
+                                nrSubmissionId: String,
+                                businessId: String,
+                                notableEvent: String,
+                                attachment: NrsAttachment
+                              )(implicit hc: HeaderCarrier): Future[Option[NrsAttachmentResponse]] = {
+    val attachmentRequest = NrsAttachmentRequest(
+      businessId = businessId,
+      notableEvent = notableEvent,
+      attachmentUrl = attachment.attachmentUrl,
+      attachmentId = attachment.attachmentId,
+      attachmentSha256Checksum = attachment.attachmentSha256Checksum,
+      attachmentContentType = attachment.attachmentContentType,
+      nrSubmissionId = nrSubmissionId
+    )
+
+    nrsConnector.submitAttachment(attachmentRequest)
   }
 }

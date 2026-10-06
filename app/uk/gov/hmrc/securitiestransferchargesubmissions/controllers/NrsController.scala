@@ -61,8 +61,13 @@ class NrsController @Inject()(
   }
 
   /**
-   * Endpoint to receive bulk (XML) submission from frontend
+   * Endpoint to receive bulk (HTML) submission from frontend with attachments
    * POST /nrs/bulk
+   * 
+   * Bulk submissions use HTML as the payload format
+   * and include attachment information that will be submitted in a two-stage process:
+   * 1. Submit main payload to /nrs-orchestrator/submission with attachmentIds in metadata
+   * 2. On success, submit attachment to /nrs-orchestrator/attachment with nrSubmissionId
    */
   def submitBulk(): Action[JsValue] = Action.async(parse.json) { implicit request =>
     authorised() {

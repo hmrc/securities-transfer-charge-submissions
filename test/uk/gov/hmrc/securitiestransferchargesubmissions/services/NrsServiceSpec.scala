@@ -16,18 +16,20 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.services
 
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.{verify, when}
+import org.mockito.Mockito.{never, verify, when}
 import org.scalatest.BeforeAndAfterEach
 import org.scalatestplus.mockito.MockitoSugar
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
-import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.NrsConnector
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs._
-import NrsTestData._
+import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{NrsAttachmentResponse, NrsConnector}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.*
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.NrsTestData.*
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.*
+import scala.concurrent.{Await, Future}
 
 class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach {
 
@@ -35,7 +37,6 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
   private val service = new NrsService(mockNrsConnector)
 
   private implicit val hc: HeaderCarrier = HeaderCarrier()
-
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -91,7 +92,7 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
         verify(mockNrsConnector).submitToNrs(
           org.mockito.ArgumentMatchers.argThat[NrsSubmission] { submission =>
             submission.payload == testSingleRequest.payload &&
-            submission.metadata == testSingleRequest.metadata
+              submission.metadata == testSingleRequest.metadata
           }
         )(any[HeaderCarrier])
       }
@@ -125,14 +126,18 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
         when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
           .thenReturn(Future.successful(Some(testNrsResponse)))
 
+        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
+
         val result = service.submitBulk(testBulkRequest)
 
         whenReady(result) { _ =>
           verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
+          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
         }
       }
 
-      "handle NRS submission failure gracefully" in {
+      "handle NRS submission failure gracefully and not submit attachment" in {
         when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
           .thenReturn(Future.successful(None))
 
@@ -140,6 +145,7 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
 
         whenReady(result) { _ =>
           verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
+          verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
         }
       }
 
@@ -151,19 +157,76 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
 
         whenReady(result) { _ =>
           verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
+          verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
         }
+      }
+
+      "handle attachment submission failure gracefully" in {
+        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(testNrsResponse)))
+
+        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(None))
+
+        val result = service.submitBulk(testBulkRequest)
+
+        whenReady(result) { _ =>
+          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
+          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
+        }
+      }
+
+      "handle attachment exception gracefully" in {
+        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(testNrsResponse)))
+
+        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
+          .thenReturn(Future.failed(new RuntimeException("Attachment exception")))
+
+        val result = service.submitBulk(testBulkRequest)
+
+        whenReady(result) { _ =>
+          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
+          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
+        }
+      }
+
+      "create correct attachment request with submission ID" in {
+        val capturedAttachmentRequest = ArgumentCaptor.forClass(classOf[NrsAttachmentRequest])
+
+        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(testNrsResponse)))
+
+        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
+
+        val result = service.submitBulk(testBulkRequest)
+
+        Await.result(result, 5.seconds)
+
+        verify(mockNrsConnector).submitAttachment(capturedAttachmentRequest.capture())(any[HeaderCarrier])
+
+        val attachmentRequest = capturedAttachmentRequest.getValue
+        attachmentRequest.nrSubmissionId shouldBe testNrsResponse.nrSubmissionId
+        attachmentRequest.businessId shouldBe testBulkRequest.metadata.businessId
+        attachmentRequest.notableEvent shouldBe testBulkRequest.metadata.notableEvent
+        attachmentRequest.attachmentUrl shouldBe testBulkRequest.attachments.attachmentUrl
+        attachmentRequest.attachmentId shouldBe testBulkRequest.attachments.attachmentId
       }
 
       "convert NrsBulkSubmissionRequest to NrsSubmission correctly" in {
         when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
           .thenReturn(Future.successful(Some(testNrsResponse)))
 
+        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
+          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
+
         service.submitBulk(testBulkRequest)
 
         verify(mockNrsConnector).submitToNrs(
           org.mockito.ArgumentMatchers.argThat[NrsSubmission] { submission =>
             submission.payload == testBulkRequest.payload &&
-            submission.metadata == testBulkRequest.metadata
+              submission.metadata == testBulkRequest.metadata
           }
         )(any[HeaderCarrier])
       }

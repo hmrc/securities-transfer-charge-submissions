@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NRS Securities Transfer Charge Submissions",
-    "description": "Test the service's NRS endpoints (port 30034).",
+    "description": "Test the service's NRS endpoints (port 30034). Updated for HTML-based bulk submissions with attachment flow.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -41,11 +41,27 @@
           "host": ["{{base_url}}"],
           "path": ["securities-transfer-charge-submissions", "nrs", "single"]
         },
-        "description": "Submit single HTML transfer. Payload is base64 encoded HTML."
+        "description": "Submit single HTML transfer. Payload is base64 encoded HTML. NRS metadata does NOT include attachmentIds field."
       }
     },
     {
-      "name": "NRS Bulk Transfer Submissions (XML Journey)",
+      "name": "NRS Bulk Transfer Submission - Step 1 (HTML)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Extract submission_id from response and save to environment",
+              "var jsonData = pm.response.json();",
+              "if (jsonData.submissionId) {",
+              "    pm.environment.set(\"submission_id\", jsonData.submissionId);",
+              "    console.log(\"Submission ID saved: \" + jsonData.submissionId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -60,14 +76,48 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"payload\": \"PD94bWwgdmVyc2lvbj0nMS4wJz8+PFNlY3VyaXRpZXNUcmFuc2ZlckNoYXJnZT48VHJhbnNmZXJzPjxUcmFuc2Zlcj48cmVjb3JkSWQ+MTwvcmVjb3JkSWQ+PC9UcmFuc2Zlcj48L1RyYW5zZmVycz48L1NlY3VyaXRpZXNUcmFuc2ZlckNoYXJnZT4=\",\n  \"metadata\": {\n    \"businessId\": \"securities-transfer-charge\",\n    \"notableEvent\": \"stc-bulk-submission\",\n    \"payloadContentType\": \"application/xml\",\n    \"payloadSha256Checksum\": \"95012edcab634c134da3869a0a1d12a261ad5cc6a1deb94c381127f3be7745ab\",\n    \"userSubmissionTimestamp\": \"2024-01-15T10:30:00.123Z\",\n    \"identityData\": {\n      \"internalId\": \"Int-12345\",\n      \"externalId\": \"Ext-67890\",\n      \"credentials\": {\n        \"providerId\": \"12345-credId\",\n        \"providerType\": \"GovernmentGateway\"\n      },\n      \"confidenceLevel\": 200,\n      \"nino\": \"AB123456C\"\n    },\n    \"userAuthToken\": \"Bearer AbCdEf123456\",\n    \"headerData\": {\n      \"Gov-Client-Public-IP\": \"203.0.113.42\",\n      \"Gov-Client-Public-Port\": \"12345\"\n    },\n    \"searchKeys\": {\n      \"nino\": \"AB123456C\",\n      \"submissionDate\": \"2024-01-15\",\n      \"numberOfTransfers\": \"2\"\n    }\n  }\n}"
+          "raw": "{\n  \"payload\": \"PGh0bWw+PGJvZHk+PGgxPkJ1bGsgU2VjdXJpdGllcyBUcmFuc2ZlciBDaGFyZ2UgU3VibWlzc2lvbjwvaDE+PHA+TklOTzogQUIxMjM0NTZDPC9wPjxwPlN1Ym1pc3Npb24gRGF0ZTogMjAyNC0wMS0xNTwvcD48L2JvZHk+PC9odG1sPg==\",\n  \"metadata\": {\n    \"businessId\": \"securities-transfer-charge\",\n    \"notableEvent\": \"stc-bulk-submission\",\n    \"payloadContentType\": \"text/html\",\n    \"payloadSha256Checksum\": \"44e03285849d1c3b125fbfdf1bb64423cc9034e283de27d28f8005eecf2b9e2e\",\n    \"userSubmissionTimestamp\": \"2024-01-15T10:30:00.123Z\",\n    \"identityData\": {\n      \"internalId\": \"Int-12345\",\n      \"externalId\": \"Ext-67890\",\n      \"credentials\": {\n        \"providerId\": \"12345-credId\",\n        \"providerType\": \"GovernmentGateway\"\n      },\n      \"confidenceLevel\": 200,\n      \"nino\": \"AB123456C\"\n    },\n    \"userAuthToken\": \"{{bearer_token_0xog}}\",\n    \"headerData\": {\n      \"Gov-Client-Public-IP\": \"203.0.113.42\",\n      \"Gov-Client-Public-Port\": \"12345\"\n    },\n    \"searchKeys\": {\n      \"nino\": \"AB123456C\",\n      \"submissionDate\": \"2024-01-15\"\n    },\n    \"attachmentIds\": [\"attachment-001\"]\n  },\n  \"attachments\": {\n    \"attachmentUrl\": \"http://localhost:9570/upscan/download/15f5c14a-5f5b-444a-85a0-2f07bbb1801b\",\n    \"attachmentId\": \"attachment-001\",\n    \"attachmentSha256Checksum\": \"b047e879b572e120d855d23fe9e250d235b844f34bcf6759806b22fad1635eee\",\n    \"attachmentContentType\": \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\"\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/securities-transfer-charge-submissions/nrs/bulk",
           "host": ["{{base_url}}"],
           "path": ["securities-transfer-charge-submissions", "nrs", "bulk"]
         },
-        "description": "Submit bulk XML transfers. Payload is base64 encoded XML."
+        "description": "Step 1: Submit bulk HTML payload. Returns submissionId. NRS submission is NOT triggered yet. Changed from XML to HTML format."
+      }
+    },
+    {
+      "name": "NRS Bulk Transfer Attachment - Step 2 (Excel)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          },
+          {
+            "key": "X-Submission-Id",
+            "value": "{{submission_id}}",
+            "description": "Submission ID from Step 1"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Upload the Excel (.xlsx) file containing bulk transfer records"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/securities-transfer-charge-submissions/nrs/attachment",
+          "host": ["{{base_url}}"],
+          "path": ["securities-transfer-charge-submissions", "nrs", "attachment"]
+        },
+        "description": "Step 2: Upload Excel attachment for bulk submission. This triggers NRS submission with the HTML payload from Step 1 and ONE attachmentId. The attachmentIds field is ALWAYS present with exactly one ID for bulk submissions."
       }
     }
   ],
@@ -81,6 +131,12 @@
       "key": "auth_token",
       "value": "test-token-12345",
       "type": "string"
+    },
+    {
+      "key": "submission_id",
+      "value": "",
+      "type": "string",
+      "description": "Auto-populated from bulk submission response"
     }
   ]
 }

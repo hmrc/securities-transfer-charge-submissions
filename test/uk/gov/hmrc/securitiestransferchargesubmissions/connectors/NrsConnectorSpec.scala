@@ -35,6 +35,7 @@ import scala.concurrent.duration.*
 class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Support with BeforeAndAfterAll {
 
   private given actorSystem: ActorSystem = ActorSystem("test-system")
+
   private given HeaderCarrier = HeaderCarrier()
 
   private val nrsSubmissionPath = "/nrs-orchestrator/submission"
@@ -63,7 +64,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
   "NrsConnector" should {
     "successfully submit to NRS and return response on first attempt" in {
       val expectedResponse = testNrsResponse
-      
+
       wireMockServer.stubFor(
         post(urlPathEqualTo(nrsSubmissionPath))
           .willReturn(aResponse()
@@ -92,7 +93,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
 
     "retry on 5xx error and eventually succeed" in {
       val expectedResponse = testNrsResponse
-      
+
       // Fail for all retry attempts except the last one
       var scenarioState = "Started"
       for (i <- 0 until expectedRetryAttempts) {
@@ -106,7 +107,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
         )
         scenarioState = nextState
       }
-      
+
       // Succeed on the final retry
       wireMockServer.stubFor(
         post(urlPathEqualTo(nrsSubmissionPath))
@@ -138,7 +139,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
 
     "retry on network exception and eventually succeed" in {
       val expectedResponse = testNrsResponse
-      
+
       wireMockServer.stubFor(
         post(urlPathEqualTo(nrsSubmissionPath))
           .inScenario("network-retry")
@@ -146,7 +147,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
           .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE))
           .willSetStateTo("retried")
       )
-      
+
       wireMockServer.stubFor(
         post(urlPathEqualTo(nrsSubmissionPath))
           .inScenario("network-retry")
@@ -199,6 +200,92 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
 
       result shouldBe None
       wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsSubmissionPath)))
+    }
+  }
+
+  "NrsConnector.submitAttachment" should {
+    val nrsAttachmentPath = "/nrs-orchestrator/attachment"
+
+    "successfully submit attachment and return response on first attempt" in {
+      val expectedResponse = NrsAttachmentResponse("att-123")
+
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse()
+            .withStatus(ACCEPTED)
+            .withBody(Json.toJson(expectedResponse).toString())
+            .withHeader("Content-Type", "application/json"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
+
+      result shouldBe Some(expectedResponse)
+      wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
+    }
+
+    "return None when attachment submission returns 4xx error and NOT retry" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse().withStatus(BAD_REQUEST).withBody("Bad Request"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
+
+      result shouldBe None
+      wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
+    }
+
+    "retry on 5xx error and eventually succeed" in {
+      val expectedResponse = NrsAttachmentResponse("att-123")
+
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .inScenario("attachment-retry")
+          .whenScenarioStateIs("Started")
+          .willReturn(aResponse().withStatus(INTERNAL_SERVER_ERROR))
+          .willSetStateTo("retried")
+      )
+
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .inScenario("attachment-retry")
+          .whenScenarioStateIs("retried")
+          .willReturn(aResponse()
+            .withStatus(ACCEPTED)
+            .withBody(Json.toJson(expectedResponse).toString())
+            .withHeader("Content-Type", "application/json"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 10.seconds)
+
+      result shouldBe Some(expectedResponse)
+      wireMockServer.verify(2, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
+    }
+
+    "retry on 5xx error up to max attempts then return None" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE).withBody("Service Unavailable"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 10.seconds)
+
+      result shouldBe None
+      wireMockServer.verify(expectedMaxAttempts, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
+    }
+
+    "return None when attachment response JSON is invalid" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse()
+            .withStatus(ACCEPTED)
+            .withBody("invalid json")
+            .withHeader("Content-Type", "application/json"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
+
+      result shouldBe None
     }
   }
 }
