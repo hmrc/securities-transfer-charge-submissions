@@ -18,28 +18,36 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import org.apache.pekko.actor.ActorSystem
 import play.api.Logging
-import play.api.http.Status._
-import play.api.libs.json.Json
-import play.api.libs.ws.JsonBodyWritables._
+import play.api.http.Status.*
+import play.api.libs.json.{Json, OFormat}
+import play.api.libs.ws.JsonBodyWritables.*
+import uk.gov.hmrc.http.HttpReads.Implicits.*
 import uk.gov.hmrc.http.client.HttpClientV2
 import uk.gov.hmrc.http.{HeaderCarrier, HttpResponse, StringContextOps, UpstreamErrorResponse}
-import uk.gov.hmrc.http.HttpReads.Implicits.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.{NrsSubmission, NrsSubmissionResponse}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.{NrsAttachmentRequest, NrsSubmission, NrsSubmissionResponse}
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
+case class NrsAttachmentResponse(attachmentId: String)
+
+object NrsAttachmentResponse {
+
+  implicit val format: OFormat[NrsAttachmentResponse] = Json.format[NrsAttachmentResponse]
+}
+
 @Singleton
 class NrsConnector @Inject()(
-  httpClient: HttpClientV2,
-  appConfig: AppConfig,
-  actorSystem: ActorSystem
-)(implicit ec: ExecutionContext) extends Logging {
+                              httpClient: HttpClientV2,
+                              appConfig: AppConfig,
+                              actorSystem: ActorSystem
+                            )(implicit ec: ExecutionContext) extends Logging {
 
   private val nrsSubmissionUrl = s"${appConfig.nrsBaseUrl}/submission"
+  private val nrsAttachmentUrl = s"${appConfig.nrsBaseUrl}/attachment"
 
   def submitToNrs(nrsSubmission: NrsSubmission)(implicit hc: HeaderCarrier): Future[Option[NrsSubmissionResponse]] = {
     retryWithBackoff(appConfig.nrsRetryDelays, 1) { attemptNumber =>
@@ -99,10 +107,62 @@ class NrsConnector @Inject()(
       }
   }
 
+  def submitAttachment(attachmentRequest: NrsAttachmentRequest)(implicit hc: HeaderCarrier): Future[Option[NrsAttachmentResponse]] = {
+    retryWithBackoffAttachment(appConfig.nrsRetryDelays, 1) { attemptNumber =>
+      makeAttachmentCall(attachmentRequest, attemptNumber)
+    }
+  }
+
+  private def makeAttachmentCall(attachmentRequest: NrsAttachmentRequest, attemptNumber: Int)(implicit hc: HeaderCarrier): Future[Option[NrsAttachmentResponse]] = {
+    val headers = Seq(
+      "X-API-Key" -> appConfig.nrsApiKey,
+      "Content-Type" -> "application/json"
+    )
+
+    httpClient
+      .post(url"$nrsAttachmentUrl")
+      .setHeader(headers: _*)
+      .withBody(Json.toJson(attachmentRequest))
+      .execute[HttpResponse]
+      .map { response =>
+        response.status match {
+          case ACCEPTED =>
+            Try(response.json.as[NrsAttachmentResponse]) match {
+              case Success(nrsResponse) =>
+                logger.info(s"NRS attachment submission successful with ID: ${nrsResponse.attachmentId} (attempt $attemptNumber)")
+                Some(nrsResponse)
+              case Failure(e) =>
+                logger.error(s"Failed to parse NRS attachment response: ${e.getMessage} (attempt $attemptNumber)", e)
+                None
+            }
+          case status if status >= 400 && status < 500 =>
+            logger.warn(s"NRS attachment submission failed with 4xx error (status $status) - not retrying: ${response.body}")
+            None
+          case status if status >= 500 =>
+            logger.warn(s"NRS attachment submission failed with 5xx error (status $status) - will retry: ${response.body}")
+            throw UpstreamErrorResponse(s"NRS attachment returned $status", status)
+          case status =>
+            logger.warn(s"NRS attachment submission returned unexpected status $status: ${response.body}")
+            None
+        }
+      }
+      .recover {
+        case e: UpstreamErrorResponse if e.statusCode >= 500 =>
+          logger.warn(s"NRS attachment 5xx error on attempt $attemptNumber: ${e.statusCode} - ${e.message}")
+          throw e
+        case e: UpstreamErrorResponse =>
+          logger.error(s"NRS attachment submission failed with 4xx error: ${e.statusCode} - ${e.message} (attempt $attemptNumber)")
+          None
+        case e: Exception =>
+          logger.error(s"NRS attachment submission failed with exception (attempt $attemptNumber): ${e.getMessage}", e)
+          throw e
+      }
+  }
+
   private def retryWithBackoff[A](
-    delays: Seq[FiniteDuration],
-    attemptNumber: Int
-  )(task: Int => Future[Option[NrsSubmissionResponse]]): Future[Option[NrsSubmissionResponse]] = {
+                                   delays: Seq[FiniteDuration],
+                                   attemptNumber: Int
+                                 )(task: Int => Future[Option[NrsSubmissionResponse]]): Future[Option[NrsSubmissionResponse]] = {
     task(attemptNumber).recoverWith {
       case e: UpstreamErrorResponse if e.statusCode >= 500 && delays.nonEmpty =>
         val delay = delays.head
@@ -118,6 +178,29 @@ class NrsConnector @Inject()(
         }
       case e =>
         logger.error(s"NRS submission failed after all retries: ${e.getMessage}")
+        Future.successful(None)
+    }
+  }
+
+  private def retryWithBackoffAttachment[A](
+                                             delays: Seq[FiniteDuration],
+                                             attemptNumber: Int
+                                           )(task: Int => Future[Option[NrsAttachmentResponse]]): Future[Option[NrsAttachmentResponse]] = {
+    task(attemptNumber).recoverWith {
+      case e: UpstreamErrorResponse if e.statusCode >= 500 && delays.nonEmpty =>
+        val delay = delays.head
+        logger.info(s"Retrying NRS attachment submission after $delay (attempt ${attemptNumber + 1})")
+        after(delay) {
+          retryWithBackoffAttachment(delays.tail, attemptNumber + 1)(task)
+        }
+      case e: Exception if delays.nonEmpty =>
+        val delay = delays.head
+        logger.info(s"Retrying NRS attachment submission after $delay due to exception (attempt ${attemptNumber + 1})")
+        after(delay) {
+          retryWithBackoffAttachment(delays.tail, attemptNumber + 1)(task)
+        }
+      case e =>
+        logger.error(s"NRS attachment submission failed after all retries: ${e.getMessage}")
         Future.successful(None)
     }
   }

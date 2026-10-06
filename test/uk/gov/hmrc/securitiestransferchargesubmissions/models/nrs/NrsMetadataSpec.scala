@@ -115,5 +115,45 @@ class NrsMetadataSpec extends AnyWordSpec with Matchers {
       result.get.searchKeys should have size 3
       result.get.searchKeys("transactionId") shouldBe "txn-789"
     }
+
+    "handle metadata with attachmentIds" in {
+      val metadataWithAttachments = testMetadata.copy(
+        attachmentIds = Some(Seq("att-123", "att-456", "att-789"))
+      )
+
+      val json = Json.toJson(metadataWithAttachments)
+      val result = json.validate[NrsMetadata]
+
+      result shouldBe a[JsSuccess[_]]
+      result.get.attachmentIds shouldBe Some(Seq("att-123", "att-456", "att-789"))
+    }
+
+    "handle metadata without attachmentIds" in {
+      val metadataWithoutAttachments = testMetadata.copy(attachmentIds = None)
+
+      val json = Json.toJson(metadataWithoutAttachments)
+      val result = json.validate[NrsMetadata]
+
+      result shouldBe a[JsSuccess[_]]
+      result.get.attachmentIds shouldBe None
+    }
+
+    "serialize attachmentIds correctly when present" in {
+      val metadata = testMetadata.copy(
+        attachmentIds = Some(Seq("attachment-1", "attachment-2"))
+      )
+
+      val json = Json.toJson(metadata)
+
+      (json \ "attachmentIds").asOpt[Seq[String]] shouldBe Some(Seq("attachment-1", "attachment-2"))
+    }
+
+    "not include attachmentIds field when None" in {
+      val metadata = testMetadata.copy(attachmentIds = None)
+
+      val json = Json.toJson(metadata)
+
+      (json \ "attachmentIds").toOption shouldBe None
+    }
   }
 }

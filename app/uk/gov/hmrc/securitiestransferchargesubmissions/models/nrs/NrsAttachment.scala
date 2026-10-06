@@ -18,27 +18,13 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs
 
 import play.api.libs.json.{Json, OFormat}
 
-/**
- * Request model for Single (HTML) submission from frontend
- */
-case class NrsSingleSubmissionRequest(
-  payload: String,
-  metadata: NrsMetadata
-)
+case class NrsAttachment(
+                          attachmentUrl: String,
+                          attachmentId: String,
+                          attachmentSha256Checksum: String,
+                          attachmentContentType: String
+                        )
 
-object NrsSingleSubmissionRequest {
-  implicit val format: OFormat[NrsSingleSubmissionRequest] = Json.format[NrsSingleSubmissionRequest]
-}
-
-/**
- * Request model for Bulk (HTML) submission from frontend with attachments
- */
-case class NrsBulkSubmissionRequest(
-  payload: String,
-  metadata: NrsMetadata,
-  attachments: NrsAttachment
-)
-
-object NrsBulkSubmissionRequest {
-  implicit val format: OFormat[NrsBulkSubmissionRequest] = Json.format[NrsBulkSubmissionRequest]
+object NrsAttachment {
+  implicit val format: OFormat[NrsAttachment] = Json.format[NrsAttachment]
 }

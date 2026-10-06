@@ -160,6 +160,28 @@ object NrsTestData {
     loginTimes = Some(testLoginTimesWithPrevious)
   )
 
+  // Test attachments for NrsAttachment tests
+  val testAttachment: NrsAttachment = NrsAttachment(
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/attachment.xlsx",
+    attachmentId = "att-123",
+    attachmentSha256Checksum = "abc123def456",
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  )
+
+  val testAttachment2: NrsAttachment = NrsAttachment(
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/document.xlsx",
+    attachmentId = "doc-456",
+    attachmentSha256Checksum = "fedcba987654",
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  )
+
+  val testAttachmentWithLongChecksum: NrsAttachment = NrsAttachment(
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/file.xlsx",
+    attachmentId = "att-001",
+    attachmentSha256Checksum = "a" * 64,
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  )
+
   val testMetadata: NrsMetadata = NrsMetadata(
     businessId = "stc",
     notableEvent = "stc-submission",
@@ -169,7 +191,8 @@ object NrsTestData {
     identityData = testIdentityData,
     userAuthToken = "Bearer token123",
     headerData = Map("Host" -> "localhost", "User-Agent" -> "test-agent"),
-    searchKeys = Map("submissionId" -> "sub-123")
+    searchKeys = Map("submissionId" -> "sub-123"),
+    attachmentIds = None
   )
 
   val minimalMetadata: NrsMetadata = NrsMetadata(
@@ -181,7 +204,8 @@ object NrsTestData {
     identityData = minimalIdentityData,
     userAuthToken = "token",
     headerData = Map.empty,
-    searchKeys = Map.empty
+    searchKeys = Map.empty,
+    attachmentIds = None
   )
 
   val singleHtmlMetadata: NrsMetadata = NrsMetadata(
@@ -193,7 +217,8 @@ object NrsTestData {
     identityData = testIdentityData,
     userAuthToken = "Bearer token123",
     headerData = Map("User-Agent" -> "Mozilla/5.0"),
-    searchKeys = Map("submissionId" -> "sub-123", "nino" -> "AB123456C")
+    searchKeys = Map("submissionId" -> "sub-123", "nino" -> "AB123456C"),
+    attachmentIds = None
   )
 
   val bulkXmlMetadata: NrsMetadata = NrsMetadata(
@@ -205,7 +230,8 @@ object NrsTestData {
     identityData = agentIdentityData,
     userAuthToken = "Bearer token456",
     headerData = Map("User-Agent" -> "Mozilla/5.0", "X-Request-ID" -> "req-123"),
-    searchKeys = Map("submissionId" -> "bulk-sub-456", "submissionDate" -> "2026-07-27")
+    searchKeys = Map("submissionId" -> "bulk-sub-456", "submissionDate" -> "2026-07-27"),
+    attachmentIds = Some(Seq("att-123"))
   )
 
   val testSubmission: NrsSubmission = NrsSubmission(
@@ -230,23 +256,56 @@ object NrsTestData {
 
   val testBulkRequest: NrsBulkSubmissionRequest = NrsBulkSubmissionRequest(
     payload = encodedBase64Payload,
-    metadata = bulkXmlMetadata
+    metadata = bulkXmlMetadata,
+    attachments = testAttachment
   )
 
   val bulkXmlRequest: NrsBulkSubmissionRequest = NrsBulkSubmissionRequest(
     payload = encodedXmlPayload,
-    metadata = bulkXmlMetadata
+    metadata = bulkXmlMetadata,
+    attachments = testAttachment
   )
 
   val testNrsResponse: NrsSubmissionResponse = NrsSubmissionResponse(
     nrSubmissionId = "test-nrs-id-123"
   )
 
+  // Test data for NrsAttachmentRequest tests
+  val testAttachmentRequest: NrsAttachmentRequest = NrsAttachmentRequest(
+    businessId = "stc",
+    notableEvent = "stc-submission",
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/attachment.xlsx",
+    attachmentId = "att-123",
+    attachmentSha256Checksum = "abc123def456",
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    nrSubmissionId = "nrs-sub-123"
+  )
+
+  val testAttachmentRequest2: NrsAttachmentRequest = NrsAttachmentRequest(
+    businessId = "stc",
+    notableEvent = "stc-bulk-submission",
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/document.xlsx",
+    attachmentId = "doc-456",
+    attachmentSha256Checksum = "fedcba987654",
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    nrSubmissionId = "nrs-bulk-456"
+  )
+
+  val testAttachmentRequestWithLongChecksum: NrsAttachmentRequest = NrsAttachmentRequest(
+    businessId = "stc",
+    notableEvent = "stc-submission",
+    attachmentUrl = "https://presignedurl.s3.eu-west-2.amazonaws.com/file.xlsx",
+    attachmentId = "att-001",
+    attachmentSha256Checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    attachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    nrSubmissionId = "nrs-sub-001"
+  )
+
   def identityDataWith(
-    confidenceLevel: Int = 200,
-    nino: Option[String] = Some("AB123456C"),
-    affinityGroup: Option[String] = Some("Individual")
-  ): IdentityData = IdentityData(
+                        confidenceLevel: Int = 200,
+                        nino: Option[String] = Some("AB123456C"),
+                        affinityGroup: Option[String] = Some("Individual")
+                      ): IdentityData = IdentityData(
     internalId = Some("test-internal-id"),
     externalId = Some("test-external-id"),
     agentCode = None,
@@ -270,10 +329,11 @@ object NrsTestData {
   )
 
   def metadataWith(
-    notableEvent: String = "stc-submission",
-    payloadContentType: String = "application/json",
-    identityData: IdentityData = testIdentityData
-  ): NrsMetadata = NrsMetadata(
+                    notableEvent: String = "stc-submission",
+                    payloadContentType: String = "application/json",
+                    identityData: IdentityData = testIdentityData,
+                    attachmentIds: Option[Seq[String]] = None
+                  ): NrsMetadata = NrsMetadata(
     businessId = "stc",
     notableEvent = notableEvent,
     payloadContentType = payloadContentType,
@@ -282,16 +342,18 @@ object NrsTestData {
     identityData = identityData,
     userAuthToken = "Bearer token",
     headerData = Map.empty,
-    searchKeys = Map.empty
+    searchKeys = Map.empty,
+    attachmentIds = attachmentIds
   )
 
   def singleRequestWith(
-    payload: String = encodedBase64Payload,
-    metadata: NrsMetadata = singleHtmlMetadata
-  ): NrsSingleSubmissionRequest = NrsSingleSubmissionRequest(payload, metadata)
+                         payload: String = encodedBase64Payload,
+                         metadata: NrsMetadata = singleHtmlMetadata
+                       ): NrsSingleSubmissionRequest = NrsSingleSubmissionRequest(payload, metadata)
 
   def bulkRequestWith(
-    payload: String = encodedBase64Payload,
-    metadata: NrsMetadata = bulkXmlMetadata
-  ): NrsBulkSubmissionRequest = NrsBulkSubmissionRequest(payload, metadata)
+                       payload: String = encodedBase64Payload,
+                       metadata: NrsMetadata = bulkXmlMetadata,
+                       attachments: NrsAttachment = testAttachment
+                     ): NrsBulkSubmissionRequest = NrsBulkSubmissionRequest(payload, metadata, attachments)
 }

@@ -167,12 +167,14 @@ class NrsSubmissionSpec extends AnyWordSpec with Matchers {
     "deserialize from JSON correctly" in {
       val json = Json.obj(
         "payload" -> encodedXmlPayload,
-        "metadata" -> Json.toJson(bulkXmlMetadata)
+        "metadata" -> Json.toJson(bulkXmlMetadata),
+        "attachments" -> Json.toJson(testAttachment)
       )
 
       val result = json.validate[NrsBulkSubmissionRequest]
       result shouldBe a[JsSuccess[_]]
       result.get.payload shouldBe encodedXmlPayload
+      result.get.attachments shouldBe testAttachment
     }
 
     "round-trip serialize and deserialize correctly" in {
