@@ -38,7 +38,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
 
   private given HeaderCarrier = HeaderCarrier()
 
-  private val nrsSubmissionPath = "/submission"
+  private val nrsSubmissionPath = "/nrs-orchestrator/submission"
 
   private def appConfigForWireMock(): AppConfig =
     appConfigWithOverrides(
@@ -204,7 +204,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
   }
 
   "NrsConnector.submitAttachment" should {
-    val nrsAttachmentPath = "/attachment"
+    val nrsAttachmentPath = "/nrs-orchestrator/attachment"
 
     "successfully submit attachment and return response on first attempt" in {
       val expectedResponse = NrsAttachmentResponse("att-123")
