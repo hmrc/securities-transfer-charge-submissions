@@ -23,16 +23,18 @@ import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.{BeforeAndAfterEach, OptionValues}
 import org.scalatestplus.mockito.MockitoSugar
 import play.api.Configuration
+import uk.gov.hmrc.play.bootstrap.config.ServicesConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 
-trait SpecBase extends AnyWordSpec 
-  with Matchers 
-  with MockitoSugar 
-  with BeforeAndAfterEach 
-  with ScalaFutures 
+trait SpecBase extends AnyWordSpec
+  with Matchers
+  with MockitoSugar
+  with BeforeAndAfterEach
+  with ScalaFutures
   with OptionValues {
 
-  protected def testConfiguration: Configuration = Configuration(testConfig)
+  protected def testConfiguration: Configuration =
+    Configuration(testConfig)
 
   protected def testConfig: Config = ConfigFactory.parseString(
     """
@@ -59,7 +61,7 @@ trait SpecBase extends AnyWordSpec
       |        max-concurrent-calls = 3
       |      }
       |    }
-      |    
+      |
       |    nrs {
       |      host = localhost
       |      port = 9389
@@ -73,10 +75,19 @@ trait SpecBase extends AnyWordSpec
       |""".stripMargin
   )
 
-  protected lazy val appConfig: AppConfig = new AppConfig(testConfiguration)
+  protected lazy val servicesConfig: ServicesConfig =
+    new ServicesConfig(testConfiguration)
+
+  protected lazy val appConfig: AppConfig =
+    new AppConfig(testConfiguration, servicesConfig)
 
   protected def appConfigWithOverrides(overrides: String): AppConfig = {
-    val configWithOverrides = ConfigFactory.parseString(overrides).withFallback(testConfig)
-    new AppConfig(Configuration(configWithOverrides))
+    val configWithOverrides =
+      ConfigFactory.parseString(overrides).withFallback(testConfig)
+
+    val configuration = Configuration(configWithOverrides)
+    val servicesConfig = new ServicesConfig(configuration)
+
+    new AppConfig(configuration, servicesConfig)
   }
 }
