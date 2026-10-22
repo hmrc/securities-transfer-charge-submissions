@@ -46,9 +46,9 @@ class NrsConnector @Inject()(
                               actorSystem: ActorSystem
                             )(implicit ec: ExecutionContext) extends Logging {
 
-  private val nrsSubmissionUrl = s"${appConfig.nrsBaseUrl}/submission"
-  private val nrsAttachmentUrl = s"${appConfig.nrsBaseUrl}/attachment"
-
+  private val nrsSubmissionUrl = s"${appConfig.nrsBaseUrl}/nrs-orchestrator/submission"
+  private val nrsAttachmentUrl = s"${appConfig.nrsBaseUrl}/nrs-orchestrator/attachment"
+  
   def submitToNrs(nrsSubmission: NrsSubmission)(implicit hc: HeaderCarrier): Future[Option[NrsSubmissionResponse]] = {
     retryWithBackoff(appConfig.nrsRetryDelays, 1) { attemptNumber =>
       makeNrsCall(nrsSubmission, attemptNumber)
