@@ -18,11 +18,12 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.config
 
 import javax.inject.{Inject, Singleton}
 import play.api.Configuration
+import uk.gov.hmrc.play.bootstrap.config.ServicesConfig
 
 import scala.concurrent.duration.{FiniteDuration, MILLISECONDS}
 
 @Singleton
-class AppConfig @Inject()(config: Configuration):
+class AppConfig @Inject()(config: Configuration, servicesConfig: ServicesConfig):
 
   val appName: String = config.get[String]("appName")
 
@@ -64,13 +65,11 @@ class AppConfig @Inject()(config: Configuration):
     .getOrElse(3)
 
   // NRS Configuration
-  private val nrsHost = config.get[String]("microservice.services.nrs.host")
-  private val nrsPort = config.get[Int]("microservice.services.nrs.port")
-  private val nrsProtocol = config.getOptional[String]("microservice.services.nrs.protocol").getOrElse("http")
 
-  val nrsBaseUrl: String = s"$nrsProtocol://$nrsHost:$nrsPort/nrs-orchestrator"
+  val nrsBaseUrl: String = servicesConfig.baseUrl("nrs")
+
   val nrsApiKey: String = config.get[String]("microservice.services.nrs.api-key")
-  
+
   val nrsRetryDelays: Seq[FiniteDuration] = config
     .get[Seq[String]]("nrs.retries")
     .map(scala.concurrent.duration.Duration(_).asInstanceOf[FiniteDuration])
