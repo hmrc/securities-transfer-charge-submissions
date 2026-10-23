@@ -40,13 +40,13 @@ class NrsService @Inject()(
     )
 
     nrsConnector.submitToNrs(nrsSubmission).map {
-      case Some(resp) =>
-        logger.info(s"Single NRS submission completed successfully: ${resp.nrSubmissionId}")
+      case Some(_) =>
+        logger.info("Single NRS submission completed successfully")
       case None =>
         logger.warn("Single NRS submission failed - continuing with main flow")
     }.recover {
       case ex: Exception =>
-        logger.error(s"Exception during single NRS submission: ${ex.getMessage}", ex)
+        logger.error("Unexpected error during single NRS submission - continuing with main flow")
     }
   }
 
@@ -62,7 +62,7 @@ class NrsService @Inject()(
 
     nrsConnector.submitToNrs(nrsSubmission).flatMap {
       case Some(submissionResp) =>
-        logger.info(s"Bulk NRS submission completed successfully: ${submissionResp.nrSubmissionId}")
+        logger.info("Bulk NRS submission completed successfully")
 
         submitAttachment(
           submissionResp.nrSubmissionId,
@@ -70,13 +70,13 @@ class NrsService @Inject()(
           request.metadata.notableEvent,
           request.attachments
         ).map {
-          case Some(resp) =>
-            logger.info(s"NRS attachment submitted successfully: ${resp.attachmentId} for submission ${submissionResp.nrSubmissionId}")
+          case Some(_) =>
+            logger.info("NRS attachment submitted successfully")
           case None =>
-            logger.warn(s"NRS attachment submission failed for submission ${submissionResp.nrSubmissionId}")
+            logger.warn("NRS attachment submission failed")
         }.recover {
-          case ex: Exception =>
-            logger.error(s"Exception during NRS attachment submission for ${submissionResp.nrSubmissionId}: ${ex.getMessage}", ex)
+          case _: Exception =>
+            logger.error("Unexpected error during NRS attachment submission")
         }
 
       case None =>
@@ -84,7 +84,7 @@ class NrsService @Inject()(
         Future.successful(())
     }.recover {
       case ex: Exception =>
-        logger.error(s"Exception during bulk NRS submission: ${ex.getMessage}", ex)
+        logger.error("Unexpected error during bulk NRS submission - continuing with main flow")
     }
   }
 

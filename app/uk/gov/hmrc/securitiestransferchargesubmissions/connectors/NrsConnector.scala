@@ -73,7 +73,7 @@ class NrsConnector @Inject()(
           case ACCEPTED =>
             Try(response.json.as[NrsSubmissionResponse]) match {
               case Success(nrsResponse) =>
-                logger.info(s"NRS submission successful with ID: ${nrsResponse.nrSubmissionId} (attempt $attemptNumber)")
+                logger.info(s"NRS submission successful (attempt $attemptNumber)")
                 Some(nrsResponse)
               case Failure(e) =>
                 logger.error(s"Failed to parse NRS response: ${e.getMessage} (attempt $attemptNumber)", e)
@@ -129,7 +129,7 @@ class NrsConnector @Inject()(
           case ACCEPTED =>
             Try(response.json.as[NrsAttachmentResponse]) match {
               case Success(nrsResponse) =>
-                logger.info(s"NRS attachment submission successful with ID: ${nrsResponse.attachmentId} (attempt $attemptNumber)")
+                logger.info(s"NRS attachment submission successful (attempt $attemptNumber)")
                 Some(nrsResponse)
               case Failure(e) =>
                 logger.error(s"Failed to parse NRS attachment response: ${e.getMessage} (attempt $attemptNumber)", e)
