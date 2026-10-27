@@ -22,7 +22,7 @@ import play.api.mvc.*
 import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcCharge, StcTransactionCreateProcessed, StcTransactionCreateProcessedBody, StcTransactionCreateResponse}
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcCharge, StcTransactionCreateBadRequest, StcTransactionCreateBusinessError, StcTransactionCreateProcessed, StcTransactionCreateProcessedBody, StcTransactionCreateResponse}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConnector
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
@@ -62,9 +62,16 @@ class SubmissionController @Inject()(
             )
           }
           
-          val json = response.map(tx => Created(Json.toJson(tx)))
+          val result = for {
+            resp <- response
+            httpResp = resp match {
+              case processed: StcTransactionCreateProcessed    => Created(Json.toJson(processed))
+              case bad: StcTransactionCreateBadRequest         => BadRequest(Json.toJson(bad))
+              case business: StcTransactionCreateBusinessError => UnprocessableEntity(Json.toJson(business))
+            }
+          } yield httpResp
 
-          json.recover(handleClientMappingErrors)
+          result.recover(handleClientMappingErrors)
     }
   }   
       
