@@ -21,10 +21,11 @@ import play.api.libs.json.*
 import play.api.mvc.*
 import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
+import uk.gov.hmrc.http.UpstreamErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcCharge, StcTransactionCreateBadRequest, StcTransactionCreateBusinessError, StcTransactionCreateProcessed, StcTransactionCreateProcessedBody, StcTransactionCreateResponse}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.SubmissionConnector
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{SubmissionBatchPayload, TransferDetailsFailure, TransferDetailsSuccess}
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
@@ -73,15 +74,55 @@ class SubmissionController @Inject()(
 
           result.recover(handleClientMappingErrors)
     }
-  }   
-      
-    
+  }
+
+  /*
+   * Maps the ETMP view outcome onto this service's API:
+   *
+   *   TransferDetailsSuccess                 => 200 with the transfer details
+   *   TransferDetailsFailure, code 005       => 404 (UTRN not found for this subscription)
+   *   TransferDetailsFailure, any other code => 500 and log. 002 (STC ID does not exist) means the
+   *                                             subscription id from the caller's enrolment is unknown
+   *                                             to ETMP, which the user can't fix.
+   *   ETMP 404 with no business error        => 502. HIP couldn't route the request (e.g. bad base URL),
+   *                                             so it must not look like "transfer not found".
+   *   Other upstream failures                => rethrown for the bootstrap error handler, as for submissions.
+   */
+  def getTransferDetails(utrn: String): Action[AnyContent] = Action.async { implicit request =>
+    authorised() {
+      (headerValue(request, InboundHeaders.CorrelationId), headerValue(request, InboundHeaders.SubscriptionId)) match
+        case (Some(correlationId), Some(subscriptionId)) =>
+          submissionConnector
+            .getTransferDetails(subscriptionId, correlationId, utrn)
+            .map {
+              case TransferDetailsSuccess(details) =>
+                Ok(Json.toJson(details))
+              case TransferDetailsFailure(error) if error.code == EtmpUtrnNotFound =>
+                NotFound(ApiErrorResponse.asJson(ErrorMessages.TransferNotFound))
+              case TransferDetailsFailure(error) =>
+                logger.error(
+                  s"ETMP returned business error ${error.code} (${error.text}) when getting transfer details for request $correlationId"
+                )
+                InternalServerError(ApiErrorResponse.asJson(ErrorMessages.TransferRetrievalFailed))
+            }
+            .recover {
+              case e: UpstreamErrorResponse if e.reportAs == NOT_FOUND =>
+                logger.error(s"ETMP returned HTTP 404 with no business error for request $correlationId: ${e.message}")
+                BadGateway(ApiErrorResponse.asJson(ErrorMessages.TransferRetrievalFailed))
+            }
+        case _ =>
+          Future.successful(badRequest(ErrorMessages.MissingRequiredHeaders))
+    }
+  }
+
+  private val EtmpUtrnNotFound = "005"
+
   private def validateRequest(
     request: Request[AnyContent]
   ): Either[Result, (String, String, SubmissionBatchPayload)] =
     // Phase 1 – fail fast: both required headers must be present.
-    val correlationId  = headerValue(request, "correlation-id")
-    val subscriptionId = headerValue(request, "subscription-id")
+    val correlationId  = headerValue(request, InboundHeaders.CorrelationId)
+    val subscriptionId = headerValue(request, InboundHeaders.SubscriptionId)
     if correlationId.isEmpty || subscriptionId.isEmpty then
       return Left(singleDetailBadRequest(Json.obj("message" -> ErrorMessages.MissingRequiredHeaders)))
 

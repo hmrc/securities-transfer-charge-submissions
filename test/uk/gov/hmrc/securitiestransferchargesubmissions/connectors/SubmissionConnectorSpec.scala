@@ -21,7 +21,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, EtmpTransferDetails, TransferType}
 
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
@@ -93,6 +93,8 @@ class SubmissionConnectorSpec extends SpecBase:
     val batchSizes = ArrayBuffer.empty[Int]
 
     val submissionClient = new SubmissionClient:
+      override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(using HeaderCarrier): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
+
       override def submitTransfer(
         subscriptionId: String,
         correlationId: String,
@@ -135,6 +137,8 @@ class SubmissionConnectorSpec extends SpecBase:
     val maxObserved = new AtomicInteger(0)
 
     val submissionClient = new SubmissionClient:
+      override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(using HeaderCarrier): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
+
       override def submitTransfer(
         subscriptionId: String,
         correlationId: String,
@@ -245,6 +249,8 @@ class SubmissionConnectorSpec extends SpecBase:
       val cfg = appConfigForTest(maxRecordsPerRequest = 2)
 
       val submissionClient = new SubmissionClient:
+        override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(using HeaderCarrier): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
+
         override def submitTransfer(
           subscriptionId: String,
           correlationId: String,
@@ -286,6 +292,7 @@ class SubmissionConnectorSpec extends SpecBase:
       val promises = (1 to 3).map(recordId => recordId -> Promise[StcTransactionCreateResponse]()).toMap
 
       val submissionClient = new SubmissionClient:
+        override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(using HeaderCarrier): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
         override def submitTransfer(
           subscriptionId: String,
           correlationId: String,

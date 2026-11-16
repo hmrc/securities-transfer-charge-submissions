@@ -20,6 +20,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.SubmissionCl
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateRequest
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.EtmpTransferDetails
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
 import uk.gov.hmrc.http.HeaderCarrier
 
@@ -47,6 +48,16 @@ trait SubmissionConnector:
     transfers: Seq[SingleTransferRequest]
   )(using HeaderCarrier): Future[Seq[SingleTransferResponse]]
 
+  /**
+   * Retrieves a single transfer from ETMP. ETMP business errors (e.g. UTRN not found) are
+   * returned as `TransferDetailsFailure`; other downstream failures fail the Future.
+   */
+  def getTransferDetails(
+    subscriptionId: String,
+    correlationId: String,
+    utrn: String
+  )(using HeaderCarrier): Future[EtmpTransferDetails]
+
 @Singleton
 class SubmissionConnectorImpl @Inject()(
   client: SubmissionClient,
@@ -68,6 +79,13 @@ class SubmissionConnectorImpl @Inject()(
     transfers: Seq[SingleTransferRequest]
   )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
     submitTransfersInternal(subscriptionId, submissionId, correlationId, declaration, transfers)
+
+  override def getTransferDetails(
+    subscriptionId: String,
+    correlationId: String,
+    utrn: String
+  )(using hc: HeaderCarrier): Future[EtmpTransferDetails] =
+    client.getTransferDetails(subscriptionId, correlationId, utrn)
 
   private def submitTransfersInternal(
     subscriptionId: String,

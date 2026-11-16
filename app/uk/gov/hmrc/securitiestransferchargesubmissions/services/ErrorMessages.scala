@@ -23,3 +23,5 @@ object ErrorMessages:
   val DuplicateRecordIds = "recordIds must be unique"
   val MissingRequiredHeaders = "missing required headers: correlation-id and subscription-id"
   val InvalidRequestCode = "INVALID_REQUEST"
+  val TransferNotFound = "transfer not found"
+  val TransferRetrievalFailed = "unable to retrieve transfer details"

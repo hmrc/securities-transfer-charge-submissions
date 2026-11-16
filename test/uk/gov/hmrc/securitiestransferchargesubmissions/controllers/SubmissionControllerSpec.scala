@@ -28,11 +28,11 @@ import play.api.test.{FakeRequest, Helpers}
 import uk.gov.hmrc.auth.core.AuthConnector
 import uk.gov.hmrc.auth.core.authorise.Predicate
 import uk.gov.hmrc.auth.core.retrieve.Retrieval
-import uk.gov.hmrc.http.HeaderCarrier
+import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcChargeFailure, StcChargeSuccess}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, SubmissionBatchPayload, TransferType}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
 import java.time.LocalDate
@@ -61,6 +61,10 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
       ))
 
+    override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(
+      using hc: HeaderCarrier
+    ): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
+
   private val failingConnector = new SubmissionConnector:
 
     override def submitTransfers(
@@ -71,6 +75,69 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       transfers: Seq[SingleTransferRequest]
     )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
       Future.successful(Seq(StcChargeFailure(1, "400", "bad input")))
+
+    override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(
+      using hc: HeaderCarrier
+    ): Future[EtmpTransferDetails] = Future.failed(new NotImplementedError())
+
+  // Connector for the getTransferDetails tests: returns `outcome` and records the arguments it was called with.
+  private class TransferDetailsConnector(outcome: Future[EtmpTransferDetails]) extends SubmissionConnector:
+    @volatile var calledWith: Option[(String, String, String)] = None
+
+    override def submitTransfers(
+      subscriptionId: String,
+      submissionId: String,
+      correlationId: String,
+      declaration: SingleTransferDeclaration,
+      transfers: Seq[SingleTransferRequest]
+    )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
+      Future.failed(new NotImplementedError())
+
+    override def getTransferDetails(subscriptionId: String, correlationId: String, utrn: String)(
+      using hc: HeaderCarrier
+    ): Future[EtmpTransferDetails] =
+      calledWith = Some((subscriptionId, correlationId, utrn))
+      outcome
+
+  private def controllerReturning(outcome: Future[EtmpTransferDetails]): (SubmissionController, TransferDetailsConnector) =
+    val connector = new TransferDetailsConnector(outcome)
+    (new SubmissionController(controllerComponents, connector, stubAuthConnector), connector)
+
+  private val transferDetails = StcTransactionViewSuccess(
+    agentDetails      = None,
+    charges           = Seq(ChargeDetailsView(BigDecimal(10), "2026-04-30", "XA123", "STF", "Charge Type")),
+    contingentDetails = Seq.empty,
+    declaration = DeclarationView(
+      addr1 = "1 Main St", addr2 = None, addr3 = None, addr4 = None, country = "GB",
+      isCorrectInfo = TfBoolean.True, name = "Seller Ltd", postcode = "AA1 1AA",
+      role1 = None, role2 = None, selfDeclarationAgent = None
+    ),
+    mainBuyerDetails = BuyerDetailsView(
+      addr1 = "2 High St", addr2 = None, addr3 = None, addr4 = None, buyerName = "Buyer Ltd",
+      country = "GB", email = "buyer@test.com", isPLC = None, postcode = "BB2 2BB",
+      taxRate = BuyerTaxRate.HalfPercent, uniqueId = None
+    ),
+    mainSellerDetails = None,
+    otherBuyers       = Seq.empty,
+    otherSellers      = Seq.empty,
+    processingDate    = "2026-03-31T12:00:00Z",
+    transactionDetails = TransactionDetailsView(
+      companyName = "Company Ltd", companyRegistrationNumber = None,
+      considerationActual = BigDecimal(1000), isConnectedPartiesTransactions = TfBoolean.False,
+      marketValue = None, maxPricePaid = None, minPricePaid = None,
+      nominalValue = None, numberOfShares = 10, originalChargingPoint = "2026-03-30",
+      qualifyAsTreasuryShares = None, reasonForPurchase = None, recordId = 1,
+      reliefClaimedName = None, reliefPercentage = None, submissionDate = "2026-03-31",
+      submissionId = "sub-123", transactionType = TransferType.STF, typeOfSecurity = "Ordinary shares"
+    )
+  )
+
+  private def businessError(code: String, text: String): TransferDetailsFailure =
+    TransferDetailsFailure(StcTransactionViewError(code = code, processingDate = "2026-03-31T12:00:00Z", text = text))
+
+  private val getTransferRequest =
+    FakeRequest("GET", "/transfer/900459020010")
+      .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
 
   private val stubAuthConnector = new AuthConnector {
     override def authorise[A](predicate: Predicate, retrieval: Retrieval[A])(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[A] = Future.successful(().asInstanceOf[A])
@@ -291,6 +358,77 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       details.value.length shouldBe 1
       val messages = details.value.flatMap(d => (d \ "message").asOpt[String]).toSeq
       messages should contain only ErrorMessages.MissingRequiredHeaders
+
+  "SubmissionController.getTransferDetails" should:
+
+    "return 200 with the transfer details when ETMP returns them" in:
+      val (ctrl, _) = controllerReturning(Future.successful(TransferDetailsSuccess(transferDetails)))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(getTransferRequest)
+
+      status(result) shouldBe OK
+      contentAsJson(result) shouldBe Json.toJson(transferDetails)
+
+    "pass the subscription id, correlation id and UTRN through to the connector" in:
+      val (ctrl, connector) = controllerReturning(Future.successful(TransferDetailsSuccess(transferDetails)))
+
+      status(ctrl.getTransferDetails("900459020010").apply(getTransferRequest)) shouldBe OK
+
+      connector.calledWith shouldBe Some(("stc-123", "corr-1", "900459020010"))
+
+    "return 404 when ETMP reports the UTRN was not found (code 005)" in:
+      val (ctrl, _) = controllerReturning(Future.successful(businessError("005", "UTRN not found")))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(getTransferRequest)
+
+      status(result) shouldBe NOT_FOUND
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.TransferNotFound
+
+    "return 500 when ETMP reports the STC ID does not exist (code 002)" in:
+      val (ctrl, _) = controllerReturning(Future.successful(businessError("002", "STC_ID does not exist")))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(getTransferRequest)
+
+      status(result) shouldBe INTERNAL_SERVER_ERROR
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.TransferRetrievalFailed
+
+    "return 502, not 404, when ETMP returns a 404 with no business error" in:
+      val (ctrl, _) = controllerReturning(Future.failed(UpstreamErrorResponse("ETMP returned HTTP 404 for request Unknown.", 404, 404)))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(getTransferRequest)
+
+      status(result) shouldBe BAD_GATEWAY
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.TransferRetrievalFailed
+
+    "propagate other upstream failures to the error handler" in:
+      val upstream = UpstreamErrorResponse("ETMP returned HTTP 503 for request Unknown.", 503, 503)
+      val (ctrl, _) = controllerReturning(Future.failed(upstream))
+
+      val thrown = the[UpstreamErrorResponse] thrownBy Await.result(
+        ctrl.getTransferDetails("900459020010").apply(getTransferRequest),
+        5.seconds
+      )
+
+      thrown shouldBe upstream
+
+    "return 400 without calling ETMP when required headers are missing" in:
+      val (ctrl, connector) = controllerReturning(Future.successful(TransferDetailsSuccess(transferDetails)))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(FakeRequest("GET", "/transfer/900459020010"))
+
+      status(result) shouldBe BAD_REQUEST
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.MissingRequiredHeaders
+      connector.calledWith shouldBe None
+
+    "return 400 without calling ETMP when required headers are blank" in:
+      val (ctrl, connector) = controllerReturning(Future.successful(TransferDetailsSuccess(transferDetails)))
+
+      val result = ctrl.getTransferDetails("900459020010").apply(
+        FakeRequest("GET", "/transfer/900459020010").withHeaders("correlation-id" -> "  ", "subscription-id" -> "")
+      )
+
+      status(result) shouldBe BAD_REQUEST
+      connector.calledWith shouldBe None
 
 
   override def afterAll(): Unit =
