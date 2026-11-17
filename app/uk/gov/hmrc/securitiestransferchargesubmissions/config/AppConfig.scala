@@ -51,6 +51,18 @@ class AppConfig @Inject()(config: Configuration, servicesConfig: ServicesConfig)
     MILLISECONDS
   )
 
+  val etmpCreateRetryPolicy: RetryPolicy = RetryPolicy(etmpCreateMaxRetries, etmpCreateInitialBackoff)
+
+  val etmpViewRetryPolicy: RetryPolicy = RetryPolicy(
+    maxRetries = config
+      .getOptional[Int]("microservice.services.etmp-transaction.view.max-retries")
+      .getOrElse(0),
+    initialBackoff = FiniteDuration(
+      config.getOptional[Long]("microservice.services.etmp-transaction.view.initial-backoff-ms").getOrElse(200L),
+      MILLISECONDS
+    )
+  )
+
   val etmpCreateMaxRecordsPerRequest: Int = config
     .getOptional[Int]("microservice.services.etmp-transaction.create.max-records-per-request")
     .getOrElse(12)
@@ -73,3 +85,6 @@ class AppConfig @Inject()(config: Configuration, servicesConfig: ServicesConfig)
   val nrsRetryDelays: Seq[FiniteDuration] = config
     .get[Seq[String]]("nrs.retries")
     .map(scala.concurrent.duration.Duration(_).asInstanceOf[FiniteDuration])
+
+/** Retry settings for one ETMP operation: 5xx responses are retried with exponential backoff. */
+final case class RetryPolicy(maxRetries: Int, initialBackoff: FiniteDuration)

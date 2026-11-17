@@ -23,7 +23,7 @@ import org.scalatest.BeforeAndAfterAll
 import play.api.libs.json.Json
 import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
-import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
+import uk.gov.hmrc.securitiestransferchargesubmissions.{SpecBase, ViewTransactionFixtures}
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TfBoolean, TransferType}
 
@@ -49,7 +49,7 @@ class SubmissionClientSpec
   private val correlationId = "corr-456"
   private val path          = s"/securities-transfer-charge-stubs/RESTAdapter/stc/transaction/$subscriptionId"
 
-  private def appConfigForWireMock(maxRetries: Int = 0, initialBackoffMs: Long = 0): AppConfig =
+  private def appConfigForWireMock(maxRetries: Int = 0, initialBackoffMs: Long = 0, viewMaxRetries: Int = 0): AppConfig =
     appConfigWithOverrides(
       s"""
          |microservice.services.etmp-transaction.host = $wireMockHost
@@ -57,11 +57,18 @@ class SubmissionClientSpec
          |microservice.services.etmp-transaction.prefix = "securities-transfer-charge-stubs"
          |microservice.services.etmp-transaction.create.max-retries = $maxRetries
          |microservice.services.etmp-transaction.create.initial-backoff-ms = $initialBackoffMs
+         |microservice.services.etmp-transaction.view.max-retries = $viewMaxRetries
+         |microservice.services.etmp-transaction.view.initial-backoff-ms = $initialBackoffMs
          |""".stripMargin
     )
 
-  private def client(maxRetries: Int = 0, initialBackoffMs: Long = 0): SubmissionClientImpl =
-    new SubmissionClientImpl(httpClientV2, appConfigForWireMock(maxRetries, initialBackoffMs), fixedClock, actorSystem)
+  private def client(maxRetries: Int = 0, initialBackoffMs: Long = 0, viewMaxRetries: Int = 0): SubmissionClientImpl =
+    new SubmissionClientImpl(
+      httpClientV2,
+      appConfigForWireMock(maxRetries, initialBackoffMs, viewMaxRetries),
+      fixedClock,
+      actorSystem
+    )
 
   // ---------------------------------------------------------------------------
   // Fixtures
@@ -270,3 +277,107 @@ class SubmissionClientSpec
 
       result shouldBe a[StcTransactionCreateProcessed]
       wireMockServer.verify(3, postRequestedFor(urlPathEqualTo(path)))
+
+  "SubmissionClientImpl.viewTransaction" should:
+
+    val utrn     = "900459020010"
+    val viewPath = s"$path/$utrn"
+
+    def stubView(status: Int, body: String) =
+      wireMockServer.stubFor(
+        get(urlPathEqualTo(viewPath))
+          .willReturn(aResponse().withStatus(status).withBody(body).withHeader("Content-Type", "application/json"))
+      )
+
+    "return StcTransactionViewFound for a 200 response" in:
+      stubView(200, ViewTransactionFixtures.successJson.toString)
+
+      val result = Await.result(client().viewTransaction(subscriptionId, utrn, correlationId), 5.seconds)
+
+      result shouldBe StcTransactionViewFound(ViewTransactionFixtures.successBody)
+      wireMockServer.verify(1, getRequestedFor(urlPathEqualTo(viewPath)))
+
+    "default optional arrays to empty when ETMP omits them" in:
+      val minimal = ViewTransactionFixtures.successBodyJson - "charges" - "contingentDetails" - "otherSellers"
+      stubView(200, Json.obj("success" -> minimal).toString)
+
+      val result = Await.result(client().viewTransaction(subscriptionId, utrn, correlationId), 5.seconds)
+
+      result match
+        case StcTransactionViewFound(body) =>
+          body.charges shouldBe Nil
+          body.contingentDetails shouldBe Nil
+          body.otherSellers shouldBe Nil
+        case other => fail(s"Unexpected result: $other")
+
+    "return StcTransactionViewBusinessError for a 422 response without retrying" in:
+      stubView(422, ViewTransactionFixtures.businessErrorJson("005", "UTRN not found").toString)
+
+      val result = Await.result(client(viewMaxRetries = 3).viewTransaction(subscriptionId, utrn, correlationId), 5.seconds)
+
+      result shouldBe StcTransactionViewBusinessError(
+        StcTransactionCreateBusinessErrorBody("2026-03-31T12:00:00Z", "005", "UTRN not found")
+      )
+      wireMockServer.verify(1, getRequestedFor(urlPathEqualTo(viewPath)))
+
+    "return StcTransactionViewBadRequest for a 400 response without retrying" in:
+      stubView(400, ViewTransactionFixtures.badRequestJson.toString)
+
+      val result = Await.result(client(viewMaxRetries = 3).viewTransaction(subscriptionId, utrn, correlationId), 5.seconds)
+
+      result shouldBe a[StcTransactionViewBadRequest]
+      wireMockServer.verify(1, getRequestedFor(urlPathEqualTo(viewPath)))
+
+    "fail with a 502 UpstreamErrorResponse when a 200 body cannot be parsed" in:
+      stubView(200, Json.obj("success" -> Json.obj("processingDate" -> "x")).toString)
+
+      val exception = the[UpstreamErrorResponse] thrownBy Await.result(
+        client().viewTransaction(subscriptionId, utrn, correlationId),
+        5.seconds
+      )
+
+      exception.statusCode shouldBe 502
+
+    "fail with UpstreamErrorResponse for an unexpected status" in:
+      stubView(404, "")
+
+      val exception = the[UpstreamErrorResponse] thrownBy Await.result(
+        client().viewTransaction(subscriptionId, utrn, correlationId),
+        5.seconds
+      )
+
+      exception.statusCode shouldBe 404
+
+    "retry on 5XX and fail once retries are exhausted" in:
+      stubView(503, "")
+
+      val exception = the[UpstreamErrorResponse] thrownBy Await.result(
+        client(viewMaxRetries = 2).viewTransaction(subscriptionId, utrn, correlationId),
+        5.seconds
+      )
+
+      exception.statusCode shouldBe 503
+      wireMockServer.verify(3, getRequestedFor(urlPathEqualTo(viewPath)))
+
+    "use the view retry settings, not the create ones" in:
+      stubView(503, "")
+
+      an[UpstreamErrorResponse] should be thrownBy Await.result(
+        client(maxRetries = 3, viewMaxRetries = 0).viewTransaction(subscriptionId, utrn, correlationId),
+        5.seconds
+      )
+
+      wireMockServer.verify(1, getRequestedFor(urlPathEqualTo(viewPath)))
+
+    "set the required headers" in:
+      stubView(200, ViewTransactionFixtures.successJson.toString)
+
+      Await.result(client().viewTransaction(subscriptionId, utrn, correlationId), 5.seconds)
+
+      wireMockServer.verify(
+        getRequestedFor(urlPathEqualTo(viewPath))
+          .withHeader("correlationid",         equalTo(correlationId))
+          .withHeader("X-Originating-System",  equalTo("MDTP-STC"))
+          .withHeader("X-Transmitting-System", equalTo("HIP"))
+          .withHeader("X-Receipt-Date",        equalTo(receiptDate))
+      )

@@ -16,7 +16,7 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
-import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
+import uk.gov.hmrc.securitiestransferchargesubmissions.{SpecBase, ViewTransactionFixtures}
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, ReasonForPurchase, TfBoolean, TransferType}
@@ -212,6 +212,43 @@ class SubmissionTransformerSpec extends SpecBase:
         StcChargeFailure(1, "037", "Main Buyer Details Invalid"),
         StcChargeFailure(2, "037", "Main Buyer Details Invalid")
       )
+
+  "SubmissionTransformer.toViewTransferResponse" should:
+    "map an ETMP view body to the API response model" in:
+      transformer.toViewTransferResponse(ViewTransactionFixtures.successBody) shouldBe ViewTransactionFixtures.expectedResponse
+
+    "convert every ETMP T/F flag to a boolean and keep amend-only contingent fields" in:
+      val body = ViewTransactionFixtures.successBody
+      val etmp = body.copy(
+        transactionDetails = body.transactionDetails.copy(
+          qualifyAsTreasuryShares = Some(TfBoolean.True),
+          isConnectedPartiesTransactions = TfBoolean.True
+        ),
+        contingentDetails = List(body.contingentDetails.head.copy(
+          isAmountUnasertainable = TfBoolean.False,
+          defermentOfPayment = TfBoolean.True,
+          actualDate = Some(LocalDate.parse("2026-05-01")),
+          ascertainableAmountActual = Some(BigDecimal(1200)),
+          defermentExtensionDate = Some(LocalDate.parse("2026-06-01"))
+        )),
+        mainBuyerDetails = body.mainBuyerDetails.copy(isPLC = Some(TfBoolean.False)),
+        agentDetails = Some(AgentDetailsView("Agent", None, None, None, None, "CC3 3CC", "GB", "0123", "a@test.com", Some("ref"))),
+        declaration = body.declaration.copy(selfDeclarationAgent = Some(TfBoolean.True), isCorrectInfo = TfBoolean.False)
+      )
+
+      val result = transformer.toViewTransferResponse(etmp)
+
+      result.transactionDetails.qualifyAsTreasuryShares shouldBe Some(true)
+      result.transactionDetails.isConnectedPartiesTransactions shouldBe true
+      result.contingentDetails.head.isAmountUnasertainable shouldBe false
+      result.contingentDetails.head.defermentOfPayment shouldBe true
+      result.contingentDetails.head.actualDate shouldBe Some(LocalDate.parse("2026-05-01"))
+      result.contingentDetails.head.ascertainableAmountActual shouldBe Some(BigDecimal(1200))
+      result.contingentDetails.head.defermentExtensionDate shouldBe Some(LocalDate.parse("2026-06-01"))
+      result.mainBuyerDetails.isPLC shouldBe Some(false)
+      result.agentDetails shouldBe Some(SingleTransferAgentDetails("Agent", None, None, None, None, "CC3 3CC", "GB", "0123", "a@test.com", Some("ref")))
+      result.declaration.selfDeclarationAgent shouldBe Some(true)
+      result.declaration.isCorrectInfo shouldBe false
 
   "SubmissionTransformer.toRequests" should:
     "return one request when given one single-record request" in:

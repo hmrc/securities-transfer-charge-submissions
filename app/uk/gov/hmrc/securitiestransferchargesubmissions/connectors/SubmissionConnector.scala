@@ -16,11 +16,9 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.SubmissionClient
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcChargeFailure
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateRequest
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{SubmissionClient, StcChargeFailure, StcTransactionCreateRequest, StcTransactionViewBadRequest, StcTransactionViewBusinessError, StcTransactionViewFound}
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest, ViewTransferResponse}
 import uk.gov.hmrc.http.HeaderCarrier
 
 import javax.inject.{Inject, Singleton}
@@ -47,6 +45,21 @@ trait SubmissionConnector:
     transfers: Seq[SingleTransferRequest]
   )(using HeaderCarrier): Future[Seq[SingleTransferResponse]]
 
+  /**
+   * Retrieves a previously submitted transaction from ETMP.
+   *
+   * Contract:
+   *   - [[ViewTransactionResult.Found]] when ETMP returns the transaction.
+   *   - [[ViewTransactionResult.StcIdNotFound]] when the STC ID does not exist (422, code 002).
+   *   - [[ViewTransactionResult.UtrnNotFound]] when the UTRN cannot be found (422, code 005).
+   *   - A failed future for any other outcome (400, other 422 codes, 5xx, unparseable responses).
+   */
+  def viewTransaction(
+    subscriptionId: String,
+    utrn: String,
+    correlationId: String
+  )(using HeaderCarrier): Future[ViewTransactionResult]
+
 @Singleton
 class SubmissionConnectorImpl @Inject()(
   client: SubmissionClient,
@@ -59,6 +72,8 @@ class SubmissionConnectorImpl @Inject()(
 
   private val FailedSubmissionErrorCode = "500"
   private val FailedSubmissionErrorText = "Failed to submit transfer to ETMP"
+  private val StcIdNotFoundErrorCode = "002"
+  private val UtrnNotFoundErrorCode = "005"
 
   override def submitTransfers(
     subscriptionId: String,
@@ -68,6 +83,24 @@ class SubmissionConnectorImpl @Inject()(
     transfers: Seq[SingleTransferRequest]
   )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
     submitTransfersInternal(subscriptionId, submissionId, correlationId, declaration, transfers)
+
+  override def viewTransaction(
+    subscriptionId: String,
+    utrn: String,
+    correlationId: String
+  )(using hc: HeaderCarrier): Future[ViewTransactionResult] =
+    client.viewTransaction(subscriptionId, utrn, correlationId).flatMap {
+      case StcTransactionViewFound(body) =>
+        Future.successful(ViewTransactionResult.Found(transformer.toViewTransferResponse(body)))
+      case StcTransactionViewBusinessError(errors) if errors.code == StcIdNotFoundErrorCode =>
+        Future.successful(ViewTransactionResult.StcIdNotFound)
+      case StcTransactionViewBusinessError(errors) if errors.code == UtrnNotFoundErrorCode =>
+        Future.successful(ViewTransactionResult.UtrnNotFound)
+      case StcTransactionViewBusinessError(errors) =>
+        Future.failed(ViewTransactionFailed(s"ETMP view business error ${errors.code}: ${errors.text}"))
+      case StcTransactionViewBadRequest(error) =>
+        Future.failed(ViewTransactionFailed(s"ETMP view bad request: ${error.message} (logID ${error.logID})"))
+    }
 
   private def submitTransfersInternal(
     subscriptionId: String,
@@ -132,3 +165,10 @@ class SubmissionConnectorImpl @Inject()(
         errorText = FailedSubmissionErrorText
       )
     )
+
+enum ViewTransactionResult:
+  case Found(transaction: ViewTransferResponse)
+  case StcIdNotFound
+  case UtrnNotFound
+
+final case class ViewTransactionFailed(message: String) extends RuntimeException(message)
