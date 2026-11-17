@@ -608,6 +608,7 @@ class SubmissionIntegrationSpec
 
       response.status shouldBe 404
       (response.json \ "error").as[String] shouldBe "UTRN not found"
+      (response.json \ "code").as[String] shouldBe "UTRN_NOT_FOUND"
 
     "return 404 when ETMP reports the STC ID does not exist" in:
       stubEtmpView(422, Json.obj("errors" -> Json.obj("processingDate" -> "2026-04-09T10:00:00Z", "code" -> "002", "text" -> "STC ID does not exist")))
@@ -616,6 +617,7 @@ class SubmissionIntegrationSpec
 
       response.status shouldBe 404
       (response.json \ "error").as[String] shouldBe "STC ID not found"
+      (response.json \ "code").as[String] shouldBe "STC_ID_NOT_FOUND"
 
     "return 500 when ETMP fails" in:
       stubEtmpView(500, Json.obj("error" -> Json.obj("code" -> "500", "message" -> "boom", "logID" -> "C0000AB8190CB66000000003000007A6")))

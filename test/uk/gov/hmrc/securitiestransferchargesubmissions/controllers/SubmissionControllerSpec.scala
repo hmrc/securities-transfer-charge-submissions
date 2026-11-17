@@ -336,12 +336,14 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
       status(result) shouldBe NOT_FOUND
       (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.UtrnNotFound
+      (contentAsJson(result) \ "code").as[String] shouldBe "UTRN_NOT_FOUND"
 
     "return 404 with an STC ID message when the STC ID does not exist" in:
       val result = viewController(Future.successful(ViewTransactionResult.StcIdNotFound)).viewTransactionAction("utrn-1")(viewRequest)
 
       status(result) shouldBe NOT_FOUND
       (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.StcIdNotFound
+      (contentAsJson(result) \ "code").as[String] shouldBe "STC_ID_NOT_FOUND"
 
     "return 500 when retrieving the transaction fails" in:
       val result = viewController(Future.failed(ViewTransactionFailed("boom"))).viewTransactionAction("utrn-1")(viewRequest)

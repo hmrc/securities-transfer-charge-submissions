@@ -85,8 +85,8 @@ class SubmissionController @Inject()(
             .viewTransaction(subscriptionId = subscriptionId, utrn = utrn, correlationId = correlationId)
             .map {
               case ViewTransactionResult.Found(transaction) => Ok(Json.toJson(transaction))
-              case ViewTransactionResult.StcIdNotFound      => NotFound(ApiErrorResponse.asJson(ErrorMessages.StcIdNotFound))
-              case ViewTransactionResult.UtrnNotFound       => NotFound(ApiErrorResponse.asJson(ErrorMessages.UtrnNotFound))
+              case ViewTransactionResult.StcIdNotFound      => notFound(ErrorMessages.StcIdNotFoundCode, ErrorMessages.StcIdNotFound)
+              case ViewTransactionResult.UtrnNotFound       => notFound(ErrorMessages.UtrnNotFoundCode, ErrorMessages.UtrnNotFound)
             }
             .recover { case e =>
               logger.error(s"Failed to view transaction [correlationId=$correlationId]", e)
@@ -151,6 +151,10 @@ class SubmissionController @Inject()(
   private def headerValue(request: RequestHeader, name: String): Option[String] =
     request.headers.get(name).map(_.trim).filter(_.nonEmpty)
 
+
+  // `code` is the stable value for callers to match on; `error` is human-readable and may change.
+  private def notFound(code: String, error: String): Result =
+    NotFound(ApiErrorResponse.asJson(error) ++ Json.obj("code" -> code))
 
   private def badRequest(error: String, details: Option[JsValue] = None): Result =
     BadRequest(ApiErrorResponse.asJson(error = error, details = details))

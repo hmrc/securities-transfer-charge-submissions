@@ -25,6 +25,8 @@ object ErrorMessages:
   val InvalidRequestCode = "INVALID_REQUEST"
   val StcIdNotFound = "STC ID not found"
   val UtrnNotFound = "UTRN not found"
+  val StcIdNotFoundCode = "STC_ID_NOT_FOUND"
+  val UtrnNotFoundCode = "UTRN_NOT_FOUND"
   val ViewTransactionFailed = "failed to retrieve transaction"
   val InvalidRequest = "invalid request"
   val InvalidCorrelationId = "correlation-id must be a UUID"
