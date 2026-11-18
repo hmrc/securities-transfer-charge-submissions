@@ -20,7 +20,7 @@ import play.api.Logging
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.TfBoolean
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{SingleTransferDeclaration, SingleTransferRequest}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
 
 import javax.inject.{Inject, Singleton}
 
@@ -84,6 +84,106 @@ class SubmissionTransformer @Inject()(appConfig: AppConfig) extends Logging:
       case StcTransactionCreateBusinessError(errors) =>
         request.transactionDetails.map(td => StcChargeFailure(td.recordId, errors.code, errors.text))
 
+
+  /**
+   * Converts an ETMP view body into the API's own response model, which uses the same field shapes
+   * as POST input (plain booleans rather than ETMP's "T"/"F", no ETMP envelope).
+   */
+  def toViewTransferResponse(body: StcTransactionViewBody): ViewTransferResponse =
+    val td = body.transactionDetails
+    ViewTransferResponse(
+      processingDate = body.processingDate,
+      submissionId   = td.submissionId,
+      submissionDate = td.submissionDate,
+      recordId       = td.recordId,
+      transactionDetails = SingleTransferTransactionDetails(
+        transactionType                = td.transactionType,
+        reasonForPurchase              = td.reasonForPurchase,
+        typeOfSecurity                 = td.typeOfSecurity,
+        numberOfShares                 = td.numberOfShares,
+        nominalValue                   = td.nominalValue,
+        marketValue                    = td.marketValue,
+        qualifyAsTreasuryShares        = td.qualifyAsTreasuryShares.map(_.toBoolean),
+        maxPricePaid                   = td.maxPricePaid,
+        minPricePaid                   = td.minPricePaid,
+        originalChargingPoint          = td.originalChargingPoint,
+        considerationActual            = td.considerationActual,
+        isConnectedPartiesTransactions = td.isConnectedPartiesTransactions.toBoolean,
+        companyName                    = td.companyName,
+        companyRegistrationNumber      = td.companyRegistrationNumber,
+        reliefClaimedName              = td.reliefClaimedName,
+        reliefPercentage               = td.reliefPercentage
+      ),
+      contingentDetails = body.contingentDetails.map { cd =>
+        ViewTransferContingentDetails(
+          provisionalId               = cd.provisionalId,
+          provisionalDate             = cd.provisionalDate,
+          isAmountUnasertainable      = cd.isAmountUnasertainable.toBoolean,
+          unascertainableAmount       = cd.unascertainableAmount,
+          ascertainableAmount         = cd.ascertainableAmount,
+          defermentOfPayment          = cd.defermentOfPayment.toBoolean,
+          originalDefermentDate       = cd.originalDefermentDate,
+          actualDate                  = cd.actualDate,
+          unascertainableAmountActual = cd.unascertainableAmountActual,
+          ascertainableAmountActual   = cd.ascertainableAmountActual,
+          defermentExtensionDate      = cd.defermentExtensionDate
+        )
+      },
+      mainSellerDetails = body.mainSellerDetails.map { sd =>
+        SingleTransferSellerDetails(sd.sellerName, sd.addr1, sd.addr2, sd.addr3, sd.addr4, sd.postcode, sd.country)
+      },
+      otherSellers = body.otherSellers.map(os => SingleTransferOtherSellerName(os.sellerName)),
+      mainBuyerDetails = {
+        val bd = body.mainBuyerDetails
+        SingleTransferBuyerDetails(
+          buyerName = bd.buyerName,
+          addr1     = bd.addr1,
+          addr2     = bd.addr2,
+          addr3     = bd.addr3,
+          addr4     = bd.addr4,
+          postcode  = bd.postcode,
+          country   = bd.country,
+          email     = bd.email,
+          uniqueId  = bd.uniqueId,
+          taxRate   = bd.taxRate,
+          isPLC     = bd.isPLC.map(_.toBoolean)
+        )
+      },
+      otherBuyers = body.otherBuyers.map(ob => SingleTransferOtherBuyerName(ob.buyerName)),
+      agentDetails = body.agentDetails.map { ad =>
+        SingleTransferAgentDetails(
+          name            = ad.name,
+          addr1           = ad.addr1,
+          addr2           = ad.addr2,
+          addr3           = ad.addr3,
+          addr4           = ad.addr4,
+          postcode        = ad.postcode,
+          country         = ad.country,
+          phone           = ad.phone,
+          email           = ad.email,
+          clientReference = ad.clientReference
+        )
+      },
+      declaration = {
+        val d = body.declaration
+        SingleTransferDeclaration(
+          role1                = d.role1,
+          role2                = d.role2,
+          name                 = d.name,
+          addr1                = d.addr1,
+          addr2                = d.addr2,
+          addr3                = d.addr3,
+          addr4                = d.addr4,
+          postcode             = d.postcode,
+          country              = d.country,
+          selfDeclarationAgent = d.selfDeclarationAgent.map(_.toBoolean),
+          isCorrectInfo        = d.isCorrectInfo.toBoolean
+        )
+      },
+      charges = body.charges.map { c =>
+        ViewTransferCharge(c.chargeTypeDescription, c.chargeReference, c.chargeType, c.chargeAmount, c.chargeDueDate)
+      }
+    )
 
   private def toBatchRequest(
     batch: Seq[SingleTransferRequest],

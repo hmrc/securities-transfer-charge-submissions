@@ -20,7 +20,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.pattern.after
 import play.api.libs.json.Json
 import play.api.libs.ws.JsonBodyWritables.writeableOf_JsValue
-import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
+import uk.gov.hmrc.securitiestransferchargesubmissions.config.{AppConfig, RetryPolicy}
 import uk.gov.hmrc.http.client.HttpClientV2
 import uk.gov.hmrc.http.{HeaderCarrier, HttpReads, HttpResponse, StringContextOps}
 
@@ -34,6 +34,10 @@ trait SubmissionClient:
   def submitTransfer(subscriptionId: String, correlationId: String, request: StcTransactionCreateRequest)(using
     HeaderCarrier
   ): Future[StcTransactionCreateResponse]
+
+  def viewTransaction(subscriptionId: String, utrn: String, correlationId: String)(using
+    HeaderCarrier
+  ): Future[StcTransactionViewResponse]
 
 @Singleton
 class SubmissionClientImpl @Inject() (
@@ -52,22 +56,22 @@ class SubmissionClientImpl @Inject() (
   ): Future[StcTransactionCreateResponse] =
     val receiptDate = dateTimeFormatter.format(Instant.now(clock))
 
-    submitTransferWithRetry(subscriptionId, correlationId, request, receiptDate, retryAttempt = 0)
+    withRetry(appConfig.etmpCreateRetryPolicy)(doSubmitTransfer(subscriptionId, correlationId, request, receiptDate))
       .map(StcTransactionCreateResponse.fromHttpResponse)
 
-  private def submitTransferWithRetry(
-    subscriptionId: String,
-    correlationId: String,
-    request: StcTransactionCreateRequest,
-    receiptDate: String,
-    retryAttempt: Int
-  )(using hc: HeaderCarrier): Future[HttpResponse] =
-    doSubmitTransfer(subscriptionId, correlationId, request, receiptDate).flatMap { response =>
-      if (isRetriable5xx(response.status) && retryAttempt < appConfig.etmpCreateMaxRetries) {
-        val nextDelay = backoffDelayForAttempt(retryAttempt)
-        after(nextDelay, actorSystem.scheduler)(
-          submitTransferWithRetry(subscriptionId, correlationId, request, receiptDate, retryAttempt + 1)
-        )
+  override def viewTransaction(subscriptionId: String, utrn: String, correlationId: String)(using
+    hc: HeaderCarrier
+  ): Future[StcTransactionViewResponse] =
+    val receiptDate = dateTimeFormatter.format(Instant.now(clock))
+
+    withRetry(appConfig.etmpViewRetryPolicy)(doViewTransaction(subscriptionId, utrn, correlationId, receiptDate))
+      .map(StcTransactionViewResponse.fromHttpResponse)
+
+  private def withRetry(policy: RetryPolicy, retryAttempt: Int = 0)(call: => Future[HttpResponse]): Future[HttpResponse] =
+    call.flatMap { response =>
+      if (isRetriable5xx(response.status) && retryAttempt < policy.maxRetries) {
+        val nextDelay = backoffDelayForAttempt(policy, retryAttempt)
+        after(nextDelay, actorSystem.scheduler)(withRetry(policy, retryAttempt + 1)(call))
       } else {
         Future.successful(response)
       }
@@ -81,16 +85,30 @@ class SubmissionClientImpl @Inject() (
   )(using hc: HeaderCarrier): Future[HttpResponse] =
     httpClientV2
       .post(url"${appConfig.etmpTransactionBaseUrl}/RESTAdapter/stc/transaction/$subscriptionId")
-      .setHeader(
-        "correlationid" -> correlationId,
-        "X-Originating-System" -> appConfig.etmpOriginatingSystem,
-        "X-Receipt-Date" -> receiptDate,
-        "X-Transmitting-System" -> appConfig.etmpTransmittingSystem
-      )
+      .setHeader(etmpHeaders(correlationId, receiptDate)*)
       .withBody(Json.toJson(request))
       .execute[HttpResponse](using HttpReads.Implicits.readRaw)
 
+  private def doViewTransaction(
+    subscriptionId: String,
+    utrn: String,
+    correlationId: String,
+    receiptDate: String
+  )(using hc: HeaderCarrier): Future[HttpResponse] =
+    httpClientV2
+      .get(url"${appConfig.etmpTransactionBaseUrl}/RESTAdapter/stc/transaction/$subscriptionId/$utrn")
+      .setHeader(etmpHeaders(correlationId, receiptDate)*)
+      .execute[HttpResponse](using HttpReads.Implicits.readRaw)
+
+  private def etmpHeaders(correlationId: String, receiptDate: String): Seq[(String, String)] =
+    Seq(
+      "correlationid" -> correlationId,
+      "X-Originating-System" -> appConfig.etmpOriginatingSystem,
+      "X-Receipt-Date" -> receiptDate,
+      "X-Transmitting-System" -> appConfig.etmpTransmittingSystem
+    )
+
   private def isRetriable5xx(status: Int): Boolean = status / 100 == 5
 
-  private def backoffDelayForAttempt(retryAttempt: Int): FiniteDuration =
-    appConfig.etmpCreateInitialBackoff * math.pow(2d, retryAttempt.toDouble).toLong
+  private def backoffDelayForAttempt(policy: RetryPolicy, retryAttempt: Int): FiniteDuration =
+    policy.initialBackoff * math.pow(2d, retryAttempt.toDouble).toLong

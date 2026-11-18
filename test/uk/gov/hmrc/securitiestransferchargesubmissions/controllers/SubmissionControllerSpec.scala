@@ -34,6 +34,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, DeclarationRole, SubmissionBatchPayload, TransferType}
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
+import uk.gov.hmrc.securitiestransferchargesubmissions.{StubSubmissionConnector, ViewTransactionFixtures}
 
 import java.time.LocalDate
 import scala.concurrent.Await
@@ -48,7 +49,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private given Materializer = Materializer.matFromSystem
   private val controllerComponents = Helpers.stubControllerComponents()
 
-  private val successConnector = new SubmissionConnector:
+  private val successConnector = new StubSubmissionConnector:
 
     override def submitTransfers(
       subscriptionId: String,
@@ -61,7 +62,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
         StcChargeSuccess(1, "utrn-1", "Charge", "ref-1", "STF", BigDecimal(10), "2026-04-30")
       ))
 
-  private val failingConnector = new SubmissionConnector:
+  private val failingConnector = new StubSubmissionConnector:
 
     override def submitTransfers(
       subscriptionId: String,
@@ -292,6 +293,112 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       val messages = details.value.flatMap(d => (d \ "message").asOpt[String]).toSeq
       messages should contain only ErrorMessages.MissingRequiredHeaders
 
+
+  private def viewController(response: => Future[ViewTransactionResult]) =
+    val connector = new StubSubmissionConnector:
+      override def viewTransaction(subscriptionId: String, utrn: String, correlationId: String)(using
+        HeaderCarrier
+      ) = response
+    new SubmissionController(controllerComponents, connector, stubAuthConnector)
+
+  private val viewCorrelationId = "f0bd1f32-de51-45cc-9b18-0520d6e3ab1a"
+
+  private def viewRequestWith(headers: (String, String)*) = FakeRequest("GET", "/submission/utrn-1").withHeaders(headers*)
+
+  private val viewRequest = viewRequestWith("correlation-id" -> viewCorrelationId, "subscription-id" -> "stc-123")
+
+  private def viewDetailMessages(result: Future[play.api.mvc.Result]): Seq[String] =
+    (contentAsJson(result) \ "details").as[JsArray].value.map(d => (d \ "message").as[String]).toSeq
+
+  private val unreachableViewConnector = Future.failed[ViewTransactionResult](new AssertionError("ETMP must not be called"))
+
+  "SubmissionController.viewTransactionAction" should:
+
+    "return 200 with the transaction when it is found" in:
+      val result = viewController(Future.successful(ViewTransactionResult.Found(ViewTransactionFixtures.expectedResponse)))
+        .viewTransactionAction("utrn-1")(viewRequest)
+
+      status(result) shouldBe OK
+      contentAsJson(result).as[ViewTransferResponse] shouldBe ViewTransactionFixtures.expectedResponse
+
+    "return booleans and no ETMP envelope in the 200 body" in:
+      val result = viewController(Future.successful(ViewTransactionResult.Found(ViewTransactionFixtures.expectedResponse)))
+        .viewTransactionAction("utrn-1")(viewRequest)
+
+      val json = contentAsJson(result)
+      (json \ "success").isDefined shouldBe false
+      (json \ "transactionDetails" \ "isConnectedPartiesTransactions").as[Boolean] shouldBe false
+      (json \ "declaration" \ "isCorrectInfo").as[Boolean] shouldBe true
+      (json \ "contingentDetails" \ 0 \ "isAmountUnasertainable").as[Boolean] shouldBe true
+
+    "return 404 with a UTRN message when the UTRN cannot be found" in:
+      val result = viewController(Future.successful(ViewTransactionResult.UtrnNotFound)).viewTransactionAction("utrn-1")(viewRequest)
+
+      status(result) shouldBe NOT_FOUND
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.UtrnNotFound
+      (contentAsJson(result) \ "code").as[String] shouldBe "UTRN_NOT_FOUND"
+
+    "return 404 with an STC ID message when the STC ID does not exist" in:
+      val result = viewController(Future.successful(ViewTransactionResult.StcIdNotFound)).viewTransactionAction("utrn-1")(viewRequest)
+
+      status(result) shouldBe NOT_FOUND
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.StcIdNotFound
+      (contentAsJson(result) \ "code").as[String] shouldBe "STC_ID_NOT_FOUND"
+
+    "return 500 when retrieving the transaction fails" in:
+      val result = viewController(Future.failed(ViewTransactionFailed("boom"))).viewTransactionAction("utrn-1")(viewRequest)
+
+      status(result) shouldBe INTERNAL_SERVER_ERROR
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.ViewTransactionFailed
+
+    "return 500 for unexpected exceptions" in:
+      val result = viewController(Future.failed(new RuntimeException("boom"))).viewTransactionAction("utrn-1")(viewRequest)
+
+      status(result) shouldBe INTERNAL_SERVER_ERROR
+
+    "return 400 when required headers are missing" in:
+      val result = viewController(Future.successful(ViewTransactionResult.UtrnNotFound))
+        .viewTransactionAction("utrn-1")(viewRequestWith("correlation-id" -> viewCorrelationId))
+
+      status(result) shouldBe BAD_REQUEST
+      val details = (contentAsJson(result) \ "details").as[JsArray]
+      details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.MissingRequiredHeaders)
+
+
+    "return 400 without calling ETMP when the correlation-id is not a UUID" in:
+      val result = viewController(unreachableViewConnector)
+        .viewTransactionAction("utrn-1")(viewRequestWith("correlation-id" -> "corr-1", "subscription-id" -> "stc-123"))
+
+      status(result) shouldBe BAD_REQUEST
+      viewDetailMessages(result) should contain only ErrorMessages.InvalidCorrelationId
+
+    "return 400 without calling ETMP when the STC ID is longer than 15 characters" in:
+      val result = viewController(unreachableViewConnector)
+        .viewTransactionAction("utrn-1")(viewRequestWith("correlation-id" -> viewCorrelationId, "subscription-id" -> "X" * 16))
+
+      status(result) shouldBe BAD_REQUEST
+      viewDetailMessages(result) should contain only ErrorMessages.InvalidStcId
+
+    "return 400 without calling ETMP when the UTRN is longer than 12 characters" in:
+      val result = viewController(unreachableViewConnector).viewTransactionAction("1234567890123")(viewRequest)
+
+      status(result) shouldBe BAD_REQUEST
+      viewDetailMessages(result) should contain only ErrorMessages.InvalidUtrn
+
+    "report every invalid input at once" in:
+      val result = viewController(unreachableViewConnector)
+        .viewTransactionAction("1234567890123")(viewRequestWith("correlation-id" -> "corr-1", "subscription-id" -> "X" * 16))
+
+      status(result) shouldBe BAD_REQUEST
+      viewDetailMessages(result) should contain theSameElementsAs Seq(
+        ErrorMessages.InvalidCorrelationId, ErrorMessages.InvalidStcId, ErrorMessages.InvalidUtrn
+      )
+
+    "accept inputs at the maximum allowed lengths" in:
+      val result = viewController(Future.successful(ViewTransactionResult.UtrnNotFound))
+        .viewTransactionAction("1" * 12)(viewRequestWith("correlation-id" -> viewCorrelationId, "subscription-id" -> "X" * 15))
+
+      status(result) shouldBe NOT_FOUND
 
   override def afterAll(): Unit =
     Await.result(summon[ActorSystem].terminate(), 5.seconds)

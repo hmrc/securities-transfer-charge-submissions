@@ -17,7 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 
 import uk.gov.hmrc.http.HeaderCarrier
-import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
+import uk.gov.hmrc.securitiestransferchargesubmissions.{SpecBase, StubSubmissionClient, ViewTransactionFixtures}
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.config.AppConfig
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.*
@@ -92,7 +92,7 @@ class SubmissionConnectorSpec extends SpecBase:
     val callCount = new AtomicInteger(0)
     val batchSizes = ArrayBuffer.empty[Int]
 
-    val submissionClient = new SubmissionClient:
+    val submissionClient = new StubSubmissionClient:
       override def submitTransfer(
         subscriptionId: String,
         correlationId: String,
@@ -134,7 +134,7 @@ class SubmissionConnectorSpec extends SpecBase:
     val inFlight = new AtomicInteger(0)
     val maxObserved = new AtomicInteger(0)
 
-    val submissionClient = new SubmissionClient:
+    val submissionClient = new StubSubmissionClient:
       override def submitTransfer(
         subscriptionId: String,
         correlationId: String,
@@ -244,7 +244,7 @@ class SubmissionConnectorSpec extends SpecBase:
     "return one response per input and synthesize 500 failures for downstream batch errors" in:
       val cfg = appConfigForTest(maxRecordsPerRequest = 2)
 
-      val submissionClient = new SubmissionClient:
+      val submissionClient = new StubSubmissionClient:
         override def submitTransfer(
           subscriptionId: String,
           correlationId: String,
@@ -285,7 +285,7 @@ class SubmissionConnectorSpec extends SpecBase:
       val completionOrder = ArrayBuffer.empty[Int]
       val promises = (1 to 3).map(recordId => recordId -> Promise[StcTransactionCreateResponse]()).toMap
 
-      val submissionClient = new SubmissionClient:
+      val submissionClient = new StubSubmissionClient:
         override def submitTransfer(
           subscriptionId: String,
           correlationId: String,
@@ -326,3 +326,41 @@ class SubmissionConnectorSpec extends SpecBase:
 
       completionOrder.toSeq shouldBe Seq(3, 2, 1)
       result.map(_.recordId).toSet shouldBe Set(1, 2, 3)
+
+  "SubmissionConnectorImpl.viewTransaction" should:
+
+    def connectorReturning(response: Future[StcTransactionViewResponse]): SubmissionConnectorImpl =
+      val cfg = appConfigForTest(maxRecordsPerRequest = 1)
+      val client = new StubSubmissionClient:
+        override def viewTransaction(subscriptionId: String, utrn: String, correlationId: String)(using
+          HeaderCarrier
+        ): Future[StcTransactionViewResponse] = response
+      new SubmissionConnectorImpl(client, new SubmissionTransformer(cfg), cfg)
+
+    def view(connector: SubmissionConnectorImpl) =
+      Await.result(connector.viewTransaction("stcId", "utrn-1", "corr-1"), 5.seconds)
+
+    val businessError = (code: String) =>
+      StcTransactionViewBusinessError(StcTransactionCreateBusinessErrorBody("2026-03-31T12:00:00Z", code, "error"))
+
+    "return the transaction when ETMP finds it" in:
+      val found = StcTransactionViewFound(ViewTransactionFixtures.successBody)
+
+      view(connectorReturning(Future.successful(found))) shouldBe ViewTransactionResult.Found(ViewTransactionFixtures.expectedResponse)
+
+    "return UtrnNotFound when ETMP reports UTRN not found (005)" in:
+      view(connectorReturning(Future.successful(businessError("005")))) shouldBe ViewTransactionResult.UtrnNotFound
+
+    "return StcIdNotFound when ETMP reports the STC ID does not exist (002)" in:
+      view(connectorReturning(Future.successful(businessError("002")))) shouldBe ViewTransactionResult.StcIdNotFound
+
+    "fail for any other business error" in:
+      a[ViewTransactionFailed] should be thrownBy view(connectorReturning(Future.successful(businessError("999"))))
+
+    "fail for a bad request" in:
+      val badRequest = StcTransactionViewBadRequest(StcTransactionCreateBadRequestBody("400", "bad", "LOG"))
+
+      a[ViewTransactionFailed] should be thrownBy view(connectorReturning(Future.successful(badRequest)))
+
+    "propagate client failures" in:
+      a[RuntimeException] should be thrownBy view(connectorReturning(Future.failed(new RuntimeException("boom"))))

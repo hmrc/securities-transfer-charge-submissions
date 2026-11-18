@@ -19,7 +19,7 @@ package uk.gov.hmrc.securitiestransferchargesubmissions
 import com.github.tomakehurst.wiremock.client.WireMock.*
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import com.github.tomakehurst.wiremock.WireMockServer
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.concurrent.{IntegrationPatience, ScalaFutures}
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -39,7 +39,8 @@ class SubmissionIntegrationSpec
     with ScalaFutures
     with IntegrationPatience
     with GuiceOneServerPerSuite
-    with BeforeAndAfterAll:
+    with BeforeAndAfterAll
+    with BeforeAndAfterEach:
 
   private val etmpWireMockPort = 6002
   private val etmpWireMock = new WireMockServer(
@@ -56,6 +57,10 @@ class SubmissionIntegrationSpec
     etmpWireMock.start()
     configureFor("localhost", etmpWireMockPort)
 
+  override def beforeEach(): Unit =
+    super.beforeEach()
+    etmpWireMock.resetAll()
+
   override def afterAll(): Unit =
     etmpWireMock.stop()
     super.afterAll()
@@ -66,7 +71,9 @@ class SubmissionIntegrationSpec
         "microservice.services.etmp-transaction.host" -> "localhost",
         "microservice.services.etmp-transaction.port" -> etmpWireMockPort,
         "microservice.services.etmp-transaction.protocol" -> "http",
-        "microservice.services.etmp-transaction.prefix" -> ""
+        "microservice.services.etmp-transaction.prefix" -> "",
+        "microservice.services.etmp-transaction.create.max-retries" -> 0,
+        "microservice.services.etmp-transaction.view.max-retries" -> 0
       )
       .overrides(bind[AuthConnector].to[StubAuthConnector])
       .build()
@@ -524,3 +531,109 @@ class SubmissionIntegrationSpec
         val charges = (response.json \ "success" \ "charges").as[List[play.api.libs.json.JsObject]]
         charges should have size 2
         charges.map(c => (c \ "recordId").as[Int]) should contain theSameElementsInOrderAs List(10, 11)
+
+  "GET /securities-transfer-charge-submissions/submission/:utrn" should:
+
+    val etmpViewPath = "/RESTAdapter/stc/transaction/sub-id-001/900459020010"
+
+    def stubEtmpView(status: Int, body: JsValue) =
+      etmpWireMock.stubFor(
+        get(urlPathEqualTo(etmpViewPath))
+          .willReturn(aResponse().withStatus(status).withHeader("Content-Type", "application/json").withBody(Json.stringify(body)))
+      )
+
+    def getTransaction(headers: (String, String)*) =
+      wsClient
+        .url(s"$baseUrl/securities-transfer-charge-submissions/submission/900459020010")
+        .addHttpHeaders(headers*)
+        .get()
+        .futureValue
+
+    val correlationId   = "f0bd1f32-de51-45cc-9b18-0520d6e3ab1a"
+    val requiredHeaders = Seq("correlation-id" -> correlationId, "subscription-id" -> "sub-id-001")
+
+    "return 200 with the transaction when ETMP finds it" in:
+      val etmpBody = Json.obj(
+        "success" -> Json.obj(
+          "processingDate" -> "2026-04-09T10:00:00Z",
+          "charges" -> Json.arr(),
+          "transactionDetails" -> Json.obj(
+            "submissionId" -> "sub-001",
+            "submissionDate" -> "2026-04-09",
+            "recordId" -> 1,
+            "transactionType" -> 1,
+            "typeOfSecurity" -> "Ordinary Shares",
+            "numberOfShares" -> 100,
+            "originalChargingPoint" -> "2026-01-15",
+            "considerationActual" -> 5000,
+            "isConnectedPartiesTransactions" -> "F",
+            "companyName" -> "Test Corporation"
+          ),
+          "mainBuyerDetails" -> Json.obj(
+            "buyerName" -> "Buyer Name",
+            "addr1" -> "50 Buyer Road",
+            "postcode" -> "AB12CD",
+            "country" -> "GB",
+            "email" -> "buyer@example.com",
+            "taxRate" -> 1
+          ),
+          "declaration" -> Json.obj(
+            "name" -> "Declarant Name",
+            "addr1" -> "123 Main Street",
+            "postcode" -> "AB12CD",
+            "country" -> "GB",
+            "isCorrectInfo" -> "T"
+          )
+        )
+      )
+      stubEtmpView(200, etmpBody)
+
+      val response = getTransaction(requiredHeaders*)
+
+      response.status shouldBe 200
+      (response.json \ "submissionId").as[String] shouldBe "sub-001"
+      (response.json \ "mainBuyerDetails" \ "buyerName").as[String] shouldBe "Buyer Name"
+      (response.json \ "transactionDetails" \ "isConnectedPartiesTransactions").as[Boolean] shouldBe false
+      (response.json \ "declaration" \ "isCorrectInfo").as[Boolean] shouldBe true
+      etmpWireMock.verify(
+        getRequestedFor(urlPathEqualTo(etmpViewPath))
+          .withHeader("correlationid", equalTo(correlationId))
+          .withHeader("X-Transmitting-System", equalTo("HIP"))
+      )
+
+    "return 404 when ETMP reports the UTRN cannot be found" in:
+      stubEtmpView(422, Json.obj("errors" -> Json.obj("processingDate" -> "2026-04-09T10:00:00Z", "code" -> "005", "text" -> "UTRN not found")))
+
+      val response = getTransaction(requiredHeaders*)
+
+      response.status shouldBe 404
+      (response.json \ "error").as[String] shouldBe "UTRN not found"
+      (response.json \ "code").as[String] shouldBe "UTRN_NOT_FOUND"
+
+    "return 404 when ETMP reports the STC ID does not exist" in:
+      stubEtmpView(422, Json.obj("errors" -> Json.obj("processingDate" -> "2026-04-09T10:00:00Z", "code" -> "002", "text" -> "STC ID does not exist")))
+
+      val response = getTransaction(requiredHeaders*)
+
+      response.status shouldBe 404
+      (response.json \ "error").as[String] shouldBe "STC ID not found"
+      (response.json \ "code").as[String] shouldBe "STC_ID_NOT_FOUND"
+
+    "return 500 when ETMP fails" in:
+      stubEtmpView(500, Json.obj("error" -> Json.obj("code" -> "500", "message" -> "boom", "logID" -> "C0000AB8190CB66000000003000007A6")))
+
+      getTransaction(requiredHeaders*).status shouldBe 500
+      etmpWireMock.verify(1, getRequestedFor(urlPathEqualTo(etmpViewPath)))
+
+    "return 400 without calling ETMP when the correlation-id is not a UUID" in:
+      val response = getTransaction("correlation-id" -> "corr-123", "subscription-id" -> "sub-id-001")
+
+      response.status shouldBe 400
+      detailMessages(response.json) should contain("correlation-id must be a UUID")
+      etmpWireMock.verify(0, getRequestedFor(urlPathEqualTo(etmpViewPath)))
+
+    "return 400 when required headers are missing" in:
+      val response = getTransaction("correlation-id" -> correlationId)
+
+      response.status shouldBe 400
+      detailMessages(response.json) should contain("missing required headers: correlation-id and subscription-id")
