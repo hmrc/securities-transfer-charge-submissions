@@ -282,7 +282,6 @@ class SubmissionConnectorSpec extends SpecBase:
 
     "return matching responses even when ETMP futures complete out of order" in:
       val cfg = appConfigForTest(maxRecordsPerRequest = 1, maxConcurrentCalls = 3)
-      val completionOrder = ArrayBuffer.empty[Int]
       val promises = (1 to 3).map(recordId => recordId -> Promise[StcTransactionCreateResponse]()).toMap
 
       val submissionClient = new StubSubmissionClient:
@@ -304,9 +303,6 @@ class SubmissionConnectorSpec extends SpecBase:
           val resultF = connector.submitTransfers("stcId", "submission-123", "correlationId", declaration, transfers)
 
           Seq(3, 2, 1).foreach { recordId =>
-            completionOrder.synchronized {
-              completionOrder += recordId
-            }
             promises(recordId).success(
               StcTransactionCreateProcessed(
                 StcTransactionCreateProcessedBody(
@@ -324,8 +320,10 @@ class SubmissionConnectorSpec extends SpecBase:
         5.seconds
       )
 
-      completionOrder.toSeq shouldBe Seq(3, 2, 1)
-      result.map(_.recordId).toSet shouldBe Set(1, 2, 3)
+      // Each record must be paired with its own charge, whatever order ETMP answered in.
+      result.collect { case c: StcChargeSuccess => c.recordId -> c.utrn }.toSet shouldBe
+        Set(1 -> "utrn-1", 2 -> "utrn-2", 3 -> "utrn-3")
+      result.size shouldBe 3
 
   "SubmissionConnectorImpl.viewTransaction" should:
 

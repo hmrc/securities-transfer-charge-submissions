@@ -19,7 +19,8 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.connectors
 import com.github.tomakehurst.wiremock.client.WireMock.*
 import org.apache.pekko.actor.ActorSystem
 import org.scalatest.BeforeAndAfterAll
-import play.api.http.Status.{ACCEPTED, BAD_REQUEST, INTERNAL_SERVER_ERROR, SERVICE_UNAVAILABLE}
+import com.github.tomakehurst.wiremock.http.Fault
+import play.api.http.Status.{ACCEPTED, BAD_REQUEST, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE}
 import play.api.libs.json.Json
 import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.http.test.{HttpClientV2Support, WireMockSupport}
@@ -144,7 +145,7 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
         post(urlPathEqualTo(nrsSubmissionPath))
           .inScenario("network-retry")
           .whenScenarioStateIs("Started")
-          .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE))
+          .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER))
           .willSetStateTo("retried")
       )
 
@@ -164,16 +165,42 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
       wireMockServer.verify(2, postRequestedFor(urlPathEqualTo(nrsSubmissionPath)))
     }
 
-    "return None when all retry attempts fail with exceptions" in {
+    "return None when all retry attempts fail with network exceptions" in {
       wireMockServer.stubFor(
         post(urlPathEqualTo(nrsSubmissionPath))
-          .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE))
+          .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER))
       )
 
       val result = Await.result(connector().submitToNrs(testSubmission), 10.seconds)
 
       result shouldBe None
       wireMockServer.verify(expectedMaxAttempts, postRequestedFor(urlPathEqualTo(nrsSubmissionPath)))
+    }
+
+    "send the API key and JSON body" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsSubmissionPath))
+          .willReturn(aResponse().withStatus(ACCEPTED).withBody(Json.toJson(testNrsResponse).toString()))
+      )
+
+      Await.result(connector().submitToNrs(testSubmission), 5.seconds)
+
+      wireMockServer.verify(
+        postRequestedFor(urlPathEqualTo(nrsSubmissionPath))
+          .withHeader("X-API-Key", equalTo("test-api-key"))
+          .withRequestBody(equalToJson(Json.toJson(testSubmission).toString()))
+      )
+    }
+
+    "return None without retrying for an unexpected 2xx status" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsSubmissionPath)).willReturn(aResponse().withStatus(OK).withBody("{}"))
+      )
+
+      val result = Await.result(connector().submitToNrs(testSubmission), 5.seconds)
+
+      result shouldBe None
+      wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsSubmissionPath)))
     }
 
     "return None when response JSON is invalid" in {
@@ -188,18 +215,6 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
       val result = Await.result(connector().submitToNrs(testSubmission), 5.seconds)
 
       result shouldBe None
-    }
-
-    "not retry on UpstreamErrorResponse with 4xx status" in {
-      wireMockServer.stubFor(
-        post(urlPathEqualTo(nrsSubmissionPath))
-          .willReturn(aResponse().withStatus(BAD_REQUEST).withBody("Bad Request"))
-      )
-
-      val result = Await.result(connector().submitToNrs(testSubmission), 5.seconds)
-
-      result shouldBe None
-      wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsSubmissionPath)))
     }
   }
 
@@ -286,6 +301,44 @@ class NrsConnectorSpec extends SpecBase with WireMockSupport with HttpClientV2Su
       val result = Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
 
       result shouldBe None
+    }
+
+    "retry on network exception and return None when all attempts fail" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 10.seconds)
+
+      result shouldBe None
+      wireMockServer.verify(expectedMaxAttempts, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
+    }
+
+    "send the API key and JSON body" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath))
+          .willReturn(aResponse().withStatus(ACCEPTED).withBody(Json.toJson(NrsAttachmentResponse("att-123")).toString()))
+      )
+
+      Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
+
+      wireMockServer.verify(
+        postRequestedFor(urlPathEqualTo(nrsAttachmentPath))
+          .withHeader("X-API-Key", equalTo("test-api-key"))
+          .withRequestBody(equalToJson(Json.toJson(testAttachmentRequest).toString()))
+      )
+    }
+
+    "return None without retrying for an unexpected 2xx status" in {
+      wireMockServer.stubFor(
+        post(urlPathEqualTo(nrsAttachmentPath)).willReturn(aResponse().withStatus(OK).withBody("{}"))
+      )
+
+      val result = Await.result(connector().submitAttachment(testAttachmentRequest), 5.seconds)
+
+      result shouldBe None
+      wireMockServer.verify(1, postRequestedFor(urlPathEqualTo(nrsAttachmentPath)))
     }
   }
 }

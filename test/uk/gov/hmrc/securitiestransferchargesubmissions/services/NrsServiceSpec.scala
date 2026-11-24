@@ -16,22 +16,22 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.services
 
+import ch.qos.logback.classic.Level
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.{never, verify, when}
-import org.scalatest.BeforeAndAfterEach
-import org.scalatestplus.mockito.MockitoSugar
+import org.mockito.Mockito.{never, reset, verify, when}
+import play.api.Logger
 import uk.gov.hmrc.http.HeaderCarrier
+import uk.gov.hmrc.play.bootstrap.tools.LogCapturing
 import uk.gov.hmrc.securitiestransferchargesubmissions.SpecBase
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{NrsAttachmentResponse, NrsConnector}
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.*
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.NrsTestData.*
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.*
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
-class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach {
+class NrsServiceSpec extends SpecBase with LogCapturing {
 
   private val mockNrsConnector = mock[NrsConnector]
   private val service = new NrsService(mockNrsConnector)
@@ -40,243 +40,128 @@ class NrsServiceSpec extends SpecBase with MockitoSugar with BeforeAndAfterEach 
 
   override def beforeEach(): Unit = {
     super.beforeEach()
-    org.mockito.Mockito.reset(mockNrsConnector)
+    reset(mockNrsConnector)
   }
 
-  "NrsService" when {
+  private def stubSubmission(result: Future[Option[NrsSubmissionResponse]]): Unit =
+    when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier])).thenReturn(result)
 
-    "submitSingle" should {
+  private def stubAttachment(result: Future[Option[NrsAttachmentResponse]]): Unit =
+    when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])).thenReturn(result)
 
-      val singleRequest = testSingleRequest
+  /** Runs `call` while capturing the service's logs, and returns (level, message) pairs once it completes. */
+  private def logsFrom(call: => Future[Unit]): Seq[(Level, String)] = {
+    var logs: Seq[(Level, String)] = Nil
+    withCaptureOfLoggingFrom(Logger(classOf[NrsService])) { events =>
+      whenReady(call)(_ => ())
+      logs = events.map(e => (e.getLevel, e.getFormattedMessage))
+    }
+    logs
+  }
 
-      "successfully submit to NRS and log success" in {
-        val expectedResponse = NrsSubmissionResponse("nrs-id-123")
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(expectedResponse)))
+  "NrsService.submitSingle" should {
 
-        val result = service.submitSingle(singleRequest)
+    "log success when NRS accepts the submission" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
 
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-        }
-      }
-
-      "handle NRS submission failure gracefully" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(None))
-
-        val result = service.submitSingle(singleRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-        }
-      }
-
-      "handle NRS submission exception gracefully" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new RuntimeException("NRS connection failed")))
-
-        val result = service.submitSingle(singleRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-        }
-      }
-
-      "convert NrsSingleSubmissionRequest to NrsSubmission correctly" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        service.submitSingle(testSingleRequest)
-
-        verify(mockNrsConnector).submitToNrs(
-          org.mockito.ArgumentMatchers.argThat[NrsSubmission] { submission =>
-            submission.payload == testSingleRequest.payload &&
-              submission.metadata == testSingleRequest.metadata
-          }
-        )(any[HeaderCarrier])
-      }
-
-      "complete even when connector returns None" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(None))
-
-        val result = service.submitSingle(singleRequest)
-
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
-
-      "complete even when connector throws exception" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new Exception("Test exception")))
-
-        val result = service.submitSingle(singleRequest)
-
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
+      logsFrom(service.submitSingle(testSingleRequest)) shouldBe
+        Seq(Level.INFO -> "Single NRS submission completed successfully")
     }
 
-    "submitBulk" should {
+    "warn, and still complete, when NRS does not accept the submission" in {
+      stubSubmission(Future.successful(None))
 
-      "successfully submit to NRS and log success" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
-        }
-      }
-
-      "handle NRS submission failure gracefully and not submit attachment" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(None))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-          verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
-        }
-      }
-
-      "handle NRS submission exception gracefully" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new RuntimeException("NRS connection failed")))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-          verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
-        }
-      }
-
-      "handle attachment submission failure gracefully" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(None))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
-        }
-      }
-
-      "handle attachment exception gracefully" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new RuntimeException("Attachment exception")))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          verify(mockNrsConnector).submitToNrs(any[NrsSubmission])(any[HeaderCarrier])
-          verify(mockNrsConnector).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
-        }
-      }
-
-      "create correct attachment request with submission ID" in {
-        val capturedAttachmentRequest = ArgumentCaptor.forClass(classOf[NrsAttachmentRequest])
-
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        Await.result(result, 5.seconds)
-
-        verify(mockNrsConnector).submitAttachment(capturedAttachmentRequest.capture())(any[HeaderCarrier])
-
-        val attachmentRequest = capturedAttachmentRequest.getValue
-        attachmentRequest.nrSubmissionId shouldBe testNrsResponse.nrSubmissionId
-        attachmentRequest.businessId shouldBe testBulkRequest.metadata.businessId
-        attachmentRequest.notableEvent shouldBe testBulkRequest.metadata.notableEvent
-        attachmentRequest.attachmentUrl shouldBe testBulkRequest.attachments.attachmentUrl
-        attachmentRequest.attachmentId shouldBe testBulkRequest.attachments.attachmentId
-      }
-
-      "convert NrsBulkSubmissionRequest to NrsSubmission correctly" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(testNrsResponse)))
-
-        when(mockNrsConnector.submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(Some(NrsAttachmentResponse("att-123"))))
-
-        service.submitBulk(testBulkRequest)
-
-        verify(mockNrsConnector).submitToNrs(
-          org.mockito.ArgumentMatchers.argThat[NrsSubmission] { submission =>
-            submission.payload == testBulkRequest.payload &&
-              submission.metadata == testBulkRequest.metadata
-          }
-        )(any[HeaderCarrier])
-      }
-
-      "complete even when connector returns None" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.successful(None))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
-
-      "complete even when connector throws exception" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new Exception("Test exception")))
-
-        val result = service.submitBulk(testBulkRequest)
-
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
+      logsFrom(service.submitSingle(testSingleRequest)) shouldBe
+        Seq(Level.WARN -> "Single NRS submission failed - continuing with main flow")
     }
 
-    "fire-and-forget pattern" should {
+    "log an error, and still complete, when the connector fails" in {
+      stubSubmission(Future.failed(new RuntimeException("NRS connection failed")))
 
-      "not propagate failures to the caller for single submissions" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new RuntimeException("Simulated NRS failure")))
+      logsFrom(service.submitSingle(testSingleRequest)) shouldBe
+        Seq(Level.ERROR -> "Unexpected error during single NRS submission - continuing with main flow")
+    }
 
-        val result = service.submitSingle(testSingleRequest)
+    "send the request's payload and metadata to the connector" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
 
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
+      whenReady(service.submitSingle(testSingleRequest))(_ => ())
 
-      "not propagate failures to the caller for bulk submissions" in {
-        when(mockNrsConnector.submitToNrs(any[NrsSubmission])(any[HeaderCarrier]))
-          .thenReturn(Future.failed(new RuntimeException("Simulated NRS failure")))
+      val captor = ArgumentCaptor.forClass(classOf[NrsSubmission])
+      verify(mockNrsConnector).submitToNrs(captor.capture())(any[HeaderCarrier])
+      captor.getValue shouldBe NrsSubmission(testSingleRequest.payload, testSingleRequest.metadata)
+    }
+  }
 
-        val result = service.submitBulk(testBulkRequest)
+  "NrsService.submitBulk" should {
 
-        whenReady(result) { _ =>
-          succeed
-        }
-      }
+    "submit the attachment with the NRS submission id and log both successes" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
+      stubAttachment(Future.successful(Some(NrsAttachmentResponse("att-123"))))
+
+      logsFrom(service.submitBulk(testBulkRequest)) shouldBe Seq(
+        Level.INFO -> "Bulk NRS submission completed successfully",
+        Level.INFO -> "NRS attachment submitted successfully"
+      )
+
+      val captor = ArgumentCaptor.forClass(classOf[NrsAttachmentRequest])
+      verify(mockNrsConnector).submitAttachment(captor.capture())(any[HeaderCarrier])
+      captor.getValue shouldBe NrsAttachmentRequest(
+        businessId = testBulkRequest.metadata.businessId,
+        notableEvent = testBulkRequest.metadata.notableEvent,
+        attachmentUrl = testBulkRequest.attachments.attachmentUrl,
+        attachmentId = testBulkRequest.attachments.attachmentId,
+        attachmentSha256Checksum = testBulkRequest.attachments.attachmentSha256Checksum,
+        attachmentContentType = testBulkRequest.attachments.attachmentContentType,
+        nrSubmissionId = testNrsResponse.nrSubmissionId
+      )
+    }
+
+    "send the request's payload and metadata to the connector" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
+      stubAttachment(Future.successful(Some(NrsAttachmentResponse("att-123"))))
+
+      whenReady(service.submitBulk(testBulkRequest))(_ => ())
+
+      val captor = ArgumentCaptor.forClass(classOf[NrsSubmission])
+      verify(mockNrsConnector).submitToNrs(captor.capture())(any[HeaderCarrier])
+      captor.getValue shouldBe NrsSubmission(testBulkRequest.payload, testBulkRequest.metadata)
+    }
+
+    "warn when the attachment is not accepted" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
+      stubAttachment(Future.successful(None))
+
+      logsFrom(service.submitBulk(testBulkRequest)) shouldBe Seq(
+        Level.INFO -> "Bulk NRS submission completed successfully",
+        Level.WARN -> "NRS attachment submission failed"
+      )
+    }
+
+    "log an error, and still complete, when the attachment call fails" in {
+      stubSubmission(Future.successful(Some(testNrsResponse)))
+      stubAttachment(Future.failed(new RuntimeException("Attachment exception")))
+
+      logsFrom(service.submitBulk(testBulkRequest)) shouldBe Seq(
+        Level.INFO  -> "Bulk NRS submission completed successfully",
+        Level.ERROR -> "Unexpected error during NRS attachment submission"
+      )
+    }
+
+    "not submit the attachment when the submission is not accepted" in {
+      stubSubmission(Future.successful(None))
+
+      logsFrom(service.submitBulk(testBulkRequest)) shouldBe
+        Seq(Level.WARN -> "Bulk NRS submission failed - continuing with main flow")
+      verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
+    }
+
+    "not submit the attachment, and still complete, when the submission call fails" in {
+      stubSubmission(Future.failed(new RuntimeException("NRS connection failed")))
+
+      logsFrom(service.submitBulk(testBulkRequest)) shouldBe
+        Seq(Level.ERROR -> "Unexpected error during bulk NRS submission - continuing with main flow")
+      verify(mockNrsConnector, never()).submitAttachment(any[NrsAttachmentRequest])(any[HeaderCarrier])
     }
   }
 }

@@ -59,27 +59,8 @@ object StcTransactionCreateResponse:
   given Reads[StcTransactionCreateBusinessError] = Json.reads[StcTransactionCreateBusinessError]
 
 
-  given Reads[StcTransactionCreateResponse] = Reads { json =>
-    (json \ "success", json \ "error", json \ "errors") match
-      case (JsDefined(_), _, _) =>
-        summon[Reads[StcTransactionCreateProcessed]].reads(json)
-      case (_, JsDefined(_), _) =>
-        summon[Reads[StcTransactionCreateBadRequest]].reads(json)
-      case (_, _, JsDefined(_)) =>
-        summon[Reads[StcTransactionCreateBusinessError]].reads(json)
-      case _ => JsError("Cannot deserialise JSON into StcTransactionCreateResponse")
-  }
-
   given Writes[StcTransactionCreateProcessedBody] = Json.writes[StcTransactionCreateProcessedBody]
   given Writes[StcTransactionCreateProcessed] = Json.writes[StcTransactionCreateProcessed]
-
-  given Writes[StcTransactionCreateBusinessErrorBody] = Json.writes[StcTransactionCreateBusinessErrorBody]
-  given Writes[StcTransactionCreateBusinessError] = Json.writes[StcTransactionCreateBusinessError]
-
-  given Writes[StcTransactionCreateBadRequestBody] = Json.writes[StcTransactionCreateBadRequestBody]
-  given Writes[StcTransactionCreateBadRequest] = Json.writes[StcTransactionCreateBadRequest]
-
-  given Writes[StcTransactionCreateResponse] = Json.writes[StcTransactionCreateResponse]
 
   def fromHttpResponse(response: HttpResponse): StcTransactionCreateResponse =
     response.status match
