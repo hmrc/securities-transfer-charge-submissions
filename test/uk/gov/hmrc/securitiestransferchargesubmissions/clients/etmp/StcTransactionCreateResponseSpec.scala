@@ -18,7 +18,8 @@ package uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp
 
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.Json
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
 import uk.gov.hmrc.http.{HttpResponse, UpstreamErrorResponse}
 
 class StcTransactionCreateResponseSpec extends AnyWordSpec with Matchers:
@@ -162,10 +163,19 @@ class StcTransactionCreateResponseSpec extends AnyWordSpec with Matchers:
     "read a charge with only one of errorCode and errorText as a success, which then fails validation" in:
       Json.obj("recordId" -> 2, "errorCode" -> "500").validate[StcCharge].isError shouldBe true
 
-    "write the documented fields for success and failure charges" in:
-      // `_type` is a play-json sealed-trait discriminator that currently leaks into the output; it is not part of the API contract.
-      (Json.toJson[StcCharge](StcChargeFailure(2, "500", "boom")).as[JsObject] - "_type") shouldBe
+    "write only the documented fields for success and failure charges" in:
+      Json.toJson[StcCharge](StcChargeFailure(2, "500", "boom")) shouldBe
         Json.obj("recordId" -> 2, "errorCode" -> "500", "errorText" -> "boom")
-      (Json.toJson[StcCharge](StcChargeSuccess(1, "u", "d", "r", "STF", BigDecimal(10), "2026-04-30")).as[JsObject] - "_type") shouldBe
+      Json.toJson[StcCharge](StcChargeSuccess(1, "u", "d", "r", "STF", BigDecimal(10), "2026-04-30")) shouldBe
         Json.obj("recordId" -> 1, "utrn" -> "u", "chargeTypeDescription" -> "d", "chargeReference" -> "r",
           "chargeType" -> "STF", "chargeAmount" -> 10, "chargeDueDate" -> "2026-04-30")
+
+    "write failure charges inside a processed response without extra fields" in:
+      val processed = StcTransactionCreateProcessed(StcTransactionCreateProcessedBody("2026-03-30", List(StcChargeFailure(2, "500", "boom"))))
+
+      Json.toJson(processed) shouldBe Json.obj(
+        "success" -> Json.obj(
+          "processingDate" -> "2026-03-30",
+          "charges"        -> Json.arr(Json.obj("recordId" -> 2, "errorCode" -> "500", "errorText" -> "boom"))
+        )
+      )

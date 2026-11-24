@@ -286,8 +286,7 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
 
       val json = contentAsJson(controller.submitBatchAction("sub-123").apply(request))
 
-      // `_type` is a play-json sealed-trait discriminator that currently leaks into the response; it is not part of the API contract.
-      (json \ "success" \ "charges").as[JsArray].value.map(_.as[play.api.libs.json.JsObject] - "_type") shouldBe Seq(
+      (json \ "success" \ "charges").as[JsArray].value shouldBe Seq(
         Json.obj(
           "recordId"              -> 1,
           "utrn"                  -> "utrn-1",
