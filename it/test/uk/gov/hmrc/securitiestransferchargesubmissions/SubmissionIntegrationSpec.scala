@@ -66,7 +66,7 @@ class SubmissionIntegrationSpec
     super.afterAll()
 
   override def fakeApplication(): Application =
-    GuiceApplicationBuilder()
+    NoMongo(GuiceApplicationBuilder())
       .configure(
         "microservice.services.etmp-transaction.host" -> "localhost",
         "microservice.services.etmp-transaction.port" -> etmpWireMockPort,
