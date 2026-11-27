@@ -43,7 +43,7 @@ class ReliefController @Inject() (
         .getReliefs()
         .map(reliefs => Ok(Json.toJson(reliefs)))
         .recover { case e =>
-          logger.error("Could not get reliefs", e)
+          logger.warn("Could not get reliefs from ETMP", e)
           BadGateway(Json.toJson(ApiErrorResponse("RELIEFS_UNAVAILABLE")))
         }
     }
