@@ -21,8 +21,6 @@ import play.api.inject.{Binding, Module => AppModule}
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{ReliefClient, ReliefClientImpl, SubmissionClient, SubmissionClientImpl}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{SubmissionConnector, SubmissionConnectorImpl}
 
-import uk.gov.hmrc.securitiestransferchargesubmissions.repositories.{ReliefRepository, ReliefRepositoryImpl}
-
 import java.time.Clock
 
 class Module extends AppModule:
@@ -35,5 +33,4 @@ class Module extends AppModule:
     bind[SubmissionClient].to[SubmissionClientImpl] ::
     bind[SubmissionConnector].to[SubmissionConnectorImpl] ::
     bind[ReliefClient].to[ReliefClientImpl] ::
-    bind[ReliefRepository].to[ReliefRepositoryImpl] ::
     Nil

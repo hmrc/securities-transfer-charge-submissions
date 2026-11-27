@@ -29,9 +29,8 @@ import uk.gov.hmrc.auth.core.AuthConnector
 import uk.gov.hmrc.auth.core.authorise.Predicate
 import uk.gov.hmrc.auth.core.retrieve.Retrieval
 import uk.gov.hmrc.http.HeaderCarrier
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.ReliefClientException
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{ReliefClient, ReliefClientException}
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.Relief
-import uk.gov.hmrc.securitiestransferchargesubmissions.services.ReliefService
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -39,9 +38,9 @@ class ReliefControllerSpec extends AnyWordSpec with Matchers with MockitoSugar:
 
   private given ExecutionContext = ExecutionContext.global
 
-  private val reliefService  = mock[ReliefService]
+  private val reliefClient   = mock[ReliefClient]
   private val authConnector  = mock[AuthConnector]
-  private val controller     = new ReliefController(stubControllerComponents(), reliefService, authConnector)
+  private val controller     = new ReliefController(stubControllerComponents(), reliefClient, authConnector)
 
   when(authConnector.authorise[Unit](any[Predicate], any[Retrieval[Unit]])(using any[HeaderCarrier], any[ExecutionContext]))
     .thenReturn(Future.successful(()))
@@ -49,7 +48,7 @@ class ReliefControllerSpec extends AnyWordSpec with Matchers with MockitoSugar:
   "ReliefController.getReliefs" should {
 
     "return 200 with the reliefs as name/percentage pairs" in {
-      when(reliefService.getAllReliefs()(using any[HeaderCarrier]))
+      when(reliefClient.getReliefs()(using any[HeaderCarrier]))
         .thenReturn(Future.successful(List(Relief("Charities Relief", 50), Relief("Other", 100))))
 
       val result = controller.getReliefs()(FakeRequest())
@@ -62,7 +61,7 @@ class ReliefControllerSpec extends AnyWordSpec with Matchers with MockitoSugar:
     }
 
     "return 502 with a stable error code when reliefs cannot be obtained" in {
-      when(reliefService.getAllReliefs()(using any[HeaderCarrier]))
+      when(reliefClient.getReliefs()(using any[HeaderCarrier]))
         .thenReturn(Future.failed(ReliefClientException("ETMP down")))
 
       val result = controller.getReliefs()(FakeRequest())

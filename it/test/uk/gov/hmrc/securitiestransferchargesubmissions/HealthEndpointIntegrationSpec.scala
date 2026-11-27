@@ -37,7 +37,7 @@ class HealthEndpointIntegrationSpec
   private val baseUrl  = s"http://localhost:$port"
 
   override def fakeApplication(): Application =
-    NoMongo(GuiceApplicationBuilder())
+    GuiceApplicationBuilder()
       .overrides(bind[AuthConnector].to[StubAuthConnector])
       .build()
 

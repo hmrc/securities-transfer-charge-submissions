@@ -20,7 +20,6 @@ import javax.inject.{Inject, Singleton}
 import play.api.Configuration
 import uk.gov.hmrc.play.bootstrap.config.ServicesConfig
 
-import java.time.Duration
 import scala.concurrent.duration.{FiniteDuration, MILLISECONDS}
 
 @Singleton
@@ -76,11 +75,6 @@ class AppConfig @Inject()(config: Configuration, servicesConfig: ServicesConfig)
   val etmpCreateMaxConcurrentCalls: Int = config
     .getOptional[Int]("microservice.services.etmp-transaction.create.max-concurrent-calls")
     .getOrElse(3)
-
-  // Reliefs are fetched from ETMP and cached in Mongo for this long
-  val reliefsCacheTtl: Duration = config
-    .getOptional[java.time.Duration]("reliefs.cache-ttl")
-    .getOrElse(Duration.ofDays(1))
 
   // NRS Configuration
 

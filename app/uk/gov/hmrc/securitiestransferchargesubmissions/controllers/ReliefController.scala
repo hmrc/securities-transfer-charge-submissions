@@ -22,7 +22,7 @@ import play.api.mvc.{Action, AnyContent, ControllerComponents}
 import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
-import uk.gov.hmrc.securitiestransferchargesubmissions.services.ReliefService
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.ReliefClient
 
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.ExecutionContext
@@ -30,7 +30,7 @@ import scala.concurrent.ExecutionContext
 @Singleton
 class ReliefController @Inject() (
   cc: ControllerComponents,
-  reliefService: ReliefService,
+  reliefClient: ReliefClient,
   val authConnector: AuthConnector
 )(using ec: ExecutionContext)
     extends BackendController(cc)
@@ -39,8 +39,8 @@ class ReliefController @Inject() (
 
   def getReliefs: Action[AnyContent] = Action.async { implicit request =>
     authorised() {
-      reliefService
-        .getAllReliefs()
+      reliefClient
+        .getReliefs()
         .map(reliefs => Ok(Json.toJson(reliefs)))
         .recover { case e =>
           logger.error("Could not get reliefs", e)
