@@ -3,6 +3,8 @@
 POST    /submission/:submissionId      uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionController.submitBatchAction(submissionId: String)
 GET     /submission/:utrn              uk.gov.hmrc.securitiestransferchargesubmissions.controllers.SubmissionController.viewTransactionAction(utrn: String)
 
+GET     /reliefs                       uk.gov.hmrc.securitiestransferchargesubmissions.controllers.ReliefController.getReliefs
+
 # NRS endpoints
 POST    /nrs/single                    uk.gov.hmrc.securitiestransferchargesubmissions.controllers.NrsController.submitSingle()
 POST    /nrs/bulk                      uk.gov.hmrc.securitiestransferchargesubmissions.controllers.NrsController.submitBulk()
