@@ -18,7 +18,7 @@ package uk.gov.hmrc.securitiestransferchargesubmissions
 
 import play.api.{Configuration, Environment}
 import play.api.inject.{Binding, Module => AppModule}
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{SubmissionClient, SubmissionClientImpl}
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{ReliefClient, ReliefClientImpl, SubmissionClient, SubmissionClientImpl}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{SubmissionConnector, SubmissionConnectorImpl}
 
 import java.time.Clock
@@ -32,4 +32,5 @@ class Module extends AppModule:
     bind[Clock].toInstance(Clock.systemDefaultZone) ::
     bind[SubmissionClient].to[SubmissionClientImpl] ::
     bind[SubmissionConnector].to[SubmissionConnectorImpl] ::
+    bind[ReliefClient].to[ReliefClientImpl] ::
     Nil
