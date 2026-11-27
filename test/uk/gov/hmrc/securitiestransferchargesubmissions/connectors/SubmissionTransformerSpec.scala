@@ -302,3 +302,82 @@ class SubmissionTransformerSpec extends SpecBase:
         Seq(4, 5, 6),
         Seq(7, 8)
       )
+
+    "carry the submissionId and declaration onto every request" in:
+      val result = transformerMax3.toRequests((1 to 4).map(singleRecordRequest), declaration.copy(selfDeclarationAgent = Some(false)), submissionId)
+
+      result.map(_.submissionId) shouldBe Seq(submissionId, submissionId)
+      result.map(_.declaration.selfDeclarationAgent).distinct shouldBe Seq(Some(TfBoolean.False))
+      result.map(_.declaration.name).distinct shouldBe Seq("Declarer")
+
+    "map every optional section, converting booleans to T/F and tagging each row with its recordId" in:
+      val base = singleRecordRequest(1)
+      val full = base.copy(
+        transactionDetails = base.transactionDetails.copy(
+          qualifyAsTreasuryShares = Some(true),
+          isConnectedPartiesTransactions = true
+        ),
+        contingentDetails = Some(Seq(
+          SingleTransferContingentDetails(
+            provisionalDate = LocalDate.parse("2026-04-01"),
+            isAmountUnasertainable = true,
+            unascertainableAmount = Some(BigDecimal(5)),
+            ascertainableAmount = None,
+            defermentOfPayment = false,
+            originalDefermentDate = Some(LocalDate.parse("2026-05-01"))
+          )
+        )),
+        otherSellers = Some(Seq(SingleTransferOtherSellerName("seller 2"), SingleTransferOtherSellerName("seller 3"))),
+        mainBuyerDetails = base.mainBuyerDetails.copy(isPLC = Some(true)),
+        otherBuyers = Some(Seq(SingleTransferOtherBuyerName("buyer 2"))),
+        agentDetails = Some(SingleTransferAgentDetails("Agent", Some("a1"), None, None, None, "CC3 3CC", "GB", "0123", "a@test.com", Some("ref")))
+      )
+      val plain = singleRecordRequest(2)
+
+      val result = transformerMax3.toRequests(Seq(full, plain), declaration, submissionId).head
+
+      result.transactionDetails.map(_.qualifyAsTreasuryShares) shouldBe Seq(Some(TfBoolean.True), None)
+      result.transactionDetails.map(_.isConnectedPartiesTransactions) shouldBe Seq(TfBoolean.True, TfBoolean.False)
+      result.contingentDetails shouldBe Some(Seq(
+        ContingentDetailsCreate(
+          recordId = 1,
+          provisionalDate = LocalDate.parse("2026-04-01"),
+          isAmountUnasertainable = TfBoolean.True,
+          unascertainableAmount = Some(BigDecimal(5)),
+          ascertainableAmount = None,
+          defermentOfPayment = TfBoolean.False,
+          originalDefermentDate = Some(LocalDate.parse("2026-05-01"))
+        )
+      ))
+      result.otherSellers shouldBe Some(Seq(OtherSellerCreateName(1, "seller 2"), OtherSellerCreateName(1, "seller 3")))
+      result.otherBuyers shouldBe Some(Seq(OtherBuyerCreateName(1, "buyer 2")))
+      result.mainBuyerDetails.map(_.isPLC) shouldBe Seq(Some(TfBoolean.True), None)
+      result.mainSellerDetails.map(_.recordId) shouldBe Seq(1, 2)
+      result.agentDetails shouldBe Some(
+        AgentDetailsCreate("Agent", Some("a1"), None, None, None, "CC3 3CC", "GB", "0123", "a@test.com", Some("ref"))
+      )
+
+    "leave optional sections empty when no record supplies them" in:
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), singleRecordRequest(2)), declaration, submissionId).head
+
+      result.contingentDetails shouldBe None
+      result.otherSellers shouldBe None
+      result.otherBuyers shouldBe None
+      result.agentDetails shouldBe None
+
+    "omit the seller details of records that have none" in:
+      val noSeller = singleRecordRequest(2).copy(mainSellerDetails = None)
+
+      val result = transformerMax3.toRequests(Seq(singleRecordRequest(1), noSeller), declaration, submissionId).head
+
+      result.mainSellerDetails.map(_.recordId) shouldBe Seq(1)
+      result.mainBuyerDetails.map(_.recordId) shouldBe Seq(1, 2)
+
+    "send a single agent for the batch, taking the first record's" in:
+      def withAgent(recordId: Int, name: String) = singleRecordRequest(recordId).copy(
+        agentDetails = Some(SingleTransferAgentDetails(name, None, None, None, None, "CC3 3CC", "GB", "0123", "a@test.com", None))
+      )
+
+      val result = transformerMax3.toRequests(Seq(withAgent(1, "first"), withAgent(2, "second")), declaration, submissionId).head
+
+      result.agentDetails.map(_.name) shouldBe Some("first")

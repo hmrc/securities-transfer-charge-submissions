@@ -50,6 +50,12 @@ object StcCharge:
         summon[Reads[StcChargeSuccess]].reads(json)
   }
 
-  given Writes[StcChargeSuccess] = Json.writes[StcChargeSuccess]
-  given Writes[StcChargeFailure] = Json.writes[StcChargeFailure]
-  given Writes[StcCharge] = Json.writes[StcCharge]
+  given successWrites: Writes[StcChargeSuccess] = Json.writes[StcChargeSuccess]
+  given failureWrites: Writes[StcChargeFailure] = Json.writes[StcChargeFailure]
+
+  // Not `Json.writes[StcCharge]`: for a sealed trait that adds a `_type` discriminator holding the
+  // class name, which is not part of the API contract. Callers tell the two shapes apart by `errorCode`.
+  given Writes[StcCharge] = Writes {
+    case success: StcChargeSuccess => successWrites.writes(success)
+    case failure: StcChargeFailure => failureWrites.writes(failure)
+  }

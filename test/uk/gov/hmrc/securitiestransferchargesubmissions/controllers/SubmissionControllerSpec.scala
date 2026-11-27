@@ -21,11 +21,11 @@ import org.apache.pekko.stream.Materializer
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import play.api.libs.json.{JsArray, JsError, JsValue, Json}
+import play.api.libs.json.{JsArray, JsError, JsResultException, JsValue, Json}
 import play.api.mvc.AnyContentAsText
 import play.api.test.Helpers.*
 import play.api.test.{FakeRequest, Helpers}
-import uk.gov.hmrc.auth.core.AuthConnector
+import uk.gov.hmrc.auth.core.{AuthConnector, MissingBearerToken}
 import uk.gov.hmrc.auth.core.authorise.Predicate
 import uk.gov.hmrc.auth.core.retrieve.Retrieval
 import uk.gov.hmrc.http.HeaderCarrier
@@ -37,6 +37,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 import uk.gov.hmrc.securitiestransferchargesubmissions.{StubSubmissionConnector, ViewTransactionFixtures}
 
 import java.time.LocalDate
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.ExecutionContext
@@ -146,6 +147,28 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
   private def payload(transfers: Seq[SingleTransferRequest]): SubmissionBatchPayload =
     SubmissionBatchPayload(declaration = declaration, transfers = transfers)
 
+  private val rejectingAuthConnector = new AuthConnector {
+    override def authorise[A](predicate: Predicate, retrieval: Retrieval[A])(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[A] =
+      Future.failed(new MissingBearerToken)
+  }
+
+  private def validSubmitRequest =
+    FakeRequest("POST", "/submission/sub-123")
+      .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
+      .withJsonBody(Json.toJson(payload(Seq(singleRequest(1)))))
+
+  private def controllerWithConnectorFailure(failure: Throwable) =
+    val connector = new StubSubmissionConnector:
+      override def submitTransfers(
+        subscriptionId: String,
+        submissionId: String,
+        correlationId: String,
+        declaration: SingleTransferDeclaration,
+        transfers: Seq[SingleTransferRequest]
+      )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
+        Future.failed(failure)
+    new SubmissionController(controllerComponents, connector, stubAuthConnector)
+
   "SubmissionController.submitBatchAction" should:
     "return 201 for a valid single-record request list" in:
       val request = FakeRequest("POST", "/submission/sub-123")
@@ -230,15 +253,6 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       details.value.length should be >= 1
       details.value.map(d => (d \ "message").as[String]) should contain (ErrorMessages.EmptyTransferBatch)
 
-    "accept payload records without submissionId because submissionId is path-scoped" in:
-      val request = FakeRequest("POST", "/submission/sub-123")
-        .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
-        .withJsonBody(Json.toJson(payload(Seq(singleRequest(1)))))
-
-      val result = controller.submitBatchAction("sub-123").apply(request)
-
-      status(result) shouldBe CREATED
-
     "return 400 when recordIds are duplicated" in:
       val request = FakeRequest("POST", "/submission/sub-123")
         .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
@@ -264,6 +278,94 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       responseBody should include("\"recordId\":1")
       responseBody should include("\"errorCode\":\"400\"")
       responseBody should include("bad input")
+
+    "return the charges as JSON, with a processingDate" in:
+      val request = FakeRequest("POST", "/submission/sub-123")
+        .withHeaders("correlation-id" -> "corr-1", "subscription-id" -> "stc-123")
+        .withJsonBody(Json.toJson(payload(Seq(singleRequest(1)))))
+
+      val json = contentAsJson(controller.submitBatchAction("sub-123").apply(request))
+
+      (json \ "success" \ "charges").as[JsArray].value shouldBe Seq(
+        Json.obj(
+          "recordId"              -> 1,
+          "utrn"                  -> "utrn-1",
+          "chargeTypeDescription" -> "Charge",
+          "chargeReference"       -> "ref-1",
+          "chargeType"            -> "STF",
+          "chargeAmount"          -> 10,
+          "chargeDueDate"         -> "2026-04-30"
+        )
+      )
+      (json \ "success" \ "processingDate").as[String] should fullyMatch regex """\d{4}-\d{2}-\d{2}"""
+
+    "pass the path submissionId, trimmed headers, declaration and transfers to the connector" in:
+      val captured = new AtomicReference[Option[(String, String, String, SingleTransferDeclaration, Seq[SingleTransferRequest])]](None)
+      val capturingConnector = new StubSubmissionConnector:
+        override def submitTransfers(
+          subscriptionId: String,
+          submissionId: String,
+          correlationId: String,
+          declaration: SingleTransferDeclaration,
+          transfers: Seq[SingleTransferRequest]
+        )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
+          captured.set(Some((subscriptionId, submissionId, correlationId, declaration, transfers)))
+          Future.successful(Seq(StcChargeFailure(1, "400", "bad input")))
+
+      val transfers = Seq(singleRequest(1), singleRequest(2))
+      val request = FakeRequest("POST", "/submission/path-sub")
+        .withHeaders("correlation-id" -> "  corr-1  ", "subscription-id" -> " stc-123 ")
+        .withJsonBody(Json.toJson(payload(transfers)))
+
+      val result = new SubmissionController(controllerComponents, capturingConnector, stubAuthConnector)
+        .submitBatchAction("path-sub")(request)
+
+      status(result) shouldBe CREATED
+      captured.get shouldBe Some(("stc-123", "path-sub", "corr-1", declaration, transfers))
+
+    "return 400 with the field errors when the connector fails to map a transfer" in:
+      val jsError = Json.obj("recordId" -> "x").validate[SingleTransferRequest] match
+        case JsError(errors) => errors
+        case _               => fail("expected validation to fail")
+      val result = controllerWithConnectorFailure(new JsResultException(jsError))
+        .submitBatchAction("sub-123")(validSubmitRequest)
+
+      status(result) shouldBe BAD_REQUEST
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.InvalidTransferData
+      (contentAsJson(result) \ "details").isDefined shouldBe true
+
+    "return 400 without details when the connector rejects the transfers" in:
+      val result = controllerWithConnectorFailure(new IllegalArgumentException("transfers must not be empty"))
+        .submitBatchAction("sub-123")(validSubmitRequest)
+
+      status(result) shouldBe BAD_REQUEST
+      (contentAsJson(result) \ "error").as[String] shouldBe ErrorMessages.InvalidTransferData
+      (contentAsJson(result) \ "details").isDefined shouldBe false
+
+    "not handle unexpected connector failures" in:
+      val result = controllerWithConnectorFailure(new RuntimeException("boom"))
+        .submitBatchAction("sub-123")(validSubmitRequest)
+
+      Await.result(result.failed, 5.seconds) shouldBe a[RuntimeException]
+
+    "fail without calling the connector when the caller is not authorised" in:
+      val called = new AtomicBoolean(false)
+      val connector = new StubSubmissionConnector:
+        override def submitTransfers(
+          subscriptionId: String,
+          submissionId: String,
+          correlationId: String,
+          declaration: SingleTransferDeclaration,
+          transfers: Seq[SingleTransferRequest]
+        )(using hc: HeaderCarrier): Future[Seq[SingleTransferResponse]] =
+          called.set(true)
+          Future.successful(Seq.empty)
+
+      val result = new SubmissionController(controllerComponents, connector, rejectingAuthConnector)
+        .submitBatchAction("sub-123")(validSubmitRequest)
+
+      Await.result(result.failed, 5.seconds) shouldBe a[MissingBearerToken]
+      called.get() shouldBe false
 
     "fail fast on missing headers and not also validate the body" in:
       // Headers absent + wrong JSON shape: only the header error should appear, not schema errors.
@@ -393,6 +495,35 @@ class SubmissionControllerSpec extends AnyWordSpec with Matchers with BeforeAndA
       viewDetailMessages(result) should contain theSameElementsAs Seq(
         ErrorMessages.InvalidCorrelationId, ErrorMessages.InvalidStcId, ErrorMessages.InvalidUtrn
       )
+
+    "return 400 without calling ETMP when the UTRN is blank" in:
+      val result = viewController(unreachableViewConnector).viewTransactionAction("   ")(viewRequest)
+
+      status(result) shouldBe BAD_REQUEST
+      viewDetailMessages(result) should contain only ErrorMessages.InvalidUtrn
+
+    "pass the UTRN and headers through to the connector" in:
+      val captured = new AtomicReference[Option[(String, String, String)]](None)
+      val connector = new StubSubmissionConnector:
+        override def viewTransaction(subscriptionId: String, utrn: String, correlationId: String)(using
+          HeaderCarrier
+        ) =
+          captured.set(Some((subscriptionId, utrn, correlationId)))
+          Future.successful(ViewTransactionResult.UtrnNotFound)
+
+      val result = new SubmissionController(controllerComponents, connector, stubAuthConnector)
+        .viewTransactionAction("utrn-9")(
+          viewRequestWith("correlation-id" -> s" $viewCorrelationId ", "subscription-id" -> " stc-9 ")
+        )
+
+      status(result) shouldBe NOT_FOUND
+      captured.get shouldBe Some(("stc-9", "utrn-9", viewCorrelationId))
+
+    "fail without calling the connector when the caller is not authorised" in:
+      val result = new SubmissionController(controllerComponents, new StubSubmissionConnector {}, rejectingAuthConnector)
+        .viewTransactionAction("utrn-1")(viewRequest)
+
+      Await.result(result.failed, 5.seconds) shouldBe a[MissingBearerToken]
 
     "accept inputs at the maximum allowed lengths" in:
       val result = viewController(Future.successful(ViewTransactionResult.UtrnNotFound))

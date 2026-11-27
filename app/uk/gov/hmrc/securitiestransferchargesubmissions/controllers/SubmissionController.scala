@@ -22,10 +22,10 @@ import play.api.mvc.*
 import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.StcTransactionCreateResponse.given
-import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcCharge, StcTransactionCreateBadRequest, StcTransactionCreateBusinessError, StcTransactionCreateProcessed, StcTransactionCreateProcessedBody, StcTransactionCreateResponse}
+import uk.gov.hmrc.securitiestransferchargesubmissions.clients.etmp.{StcTransactionCreateProcessed, StcTransactionCreateProcessedBody}
 import uk.gov.hmrc.securitiestransferchargesubmissions.connectors.{SubmissionConnector, ViewTransactionResult}
 import uk.gov.hmrc.securitiestransferchargesubmissions.models.SubmissionBatchPayload
-import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.{ApiErrorResponse, ViewTransferResponse}
+import uk.gov.hmrc.securitiestransferchargesubmissions.models.api.ApiErrorResponse
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.ErrorMessages
 
 import java.time.LocalDate
@@ -44,7 +44,7 @@ class SubmissionController @Inject()(
       validateRequest(request) match
         case Left(result) => Future.successful(result)
         case Right((correlationId, subscriptionId, payload)) =>
-          val resps = submissionConnector
+          submissionConnector
             .submitTransfers(
               subscriptionId = subscriptionId,
               submissionId = submissionId,
@@ -52,26 +52,15 @@ class SubmissionController @Inject()(
               declaration = payload.declaration,
               transfers = payload.transfers
             )
-
-          val response: Future[StcTransactionCreateResponse] = resps.map { charges =>
-            StcTransactionCreateProcessed(
-              success = StcTransactionCreateProcessedBody(
-                processingDate = LocalDate.now().toString,
-                charges = charges.asInstanceOf[List[StcCharge]]
-              )
-            )
-          }
-          
-          val result = for {
-            resp <- response
-            httpResp = resp match {
-              case processed: StcTransactionCreateProcessed    => Created(Json.toJson(processed))
-              case bad: StcTransactionCreateBadRequest         => BadRequest(Json.toJson(bad))
-              case business: StcTransactionCreateBusinessError => UnprocessableEntity(Json.toJson(business))
+            .map { charges =>
+              Created(Json.toJson(StcTransactionCreateProcessed(
+                success = StcTransactionCreateProcessedBody(
+                  processingDate = LocalDate.now().toString,
+                  charges = charges.toList
+                )
+              )))
             }
-          } yield httpResp
-
-          result.recover(handleClientMappingErrors)
+            .recover(handleClientMappingErrors)
     }
   }   
       

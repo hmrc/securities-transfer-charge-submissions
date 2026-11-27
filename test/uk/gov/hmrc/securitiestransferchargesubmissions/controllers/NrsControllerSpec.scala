@@ -17,7 +17,7 @@
 package uk.gov.hmrc.securitiestransferchargesubmissions.controllers
 
 import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.{reset, verify, when}
+import org.mockito.Mockito.{never, reset, verify, when}
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -27,7 +27,7 @@ import play.api.libs.json.Json
 import play.api.mvc.ControllerComponents
 import play.api.test.Helpers.{contentAsJson, defaultAwaitTimeout, status, stubControllerComponents}
 import play.api.test.{FakeRequest, Helpers}
-import uk.gov.hmrc.auth.core.AuthConnector
+import uk.gov.hmrc.auth.core.{AuthConnector, MissingBearerToken}
 import uk.gov.hmrc.auth.core.authorise.Predicate
 import uk.gov.hmrc.auth.core.retrieve.Retrieval
 import uk.gov.hmrc.http.HeaderCarrier
@@ -35,7 +35,8 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.models.nrs.*
 import NrsTestData._
 import uk.gov.hmrc.securitiestransferchargesubmissions.services.NrsService
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 class NrsControllerSpec extends AnyWordSpec with Matchers with MockitoSugar with BeforeAndAfterEach {
   
@@ -48,6 +49,15 @@ class NrsControllerSpec extends AnyWordSpec with Matchers with MockitoSugar with
 
   private implicit val ec: ExecutionContext = ExecutionContext.global
   private val controller = new NrsController(cc, mockNrsService, mockAuthConnector)
+
+  private val unauthorisedController = new NrsController(
+    cc,
+    mockNrsService,
+    new AuthConnector {
+      override def authorise[A](predicate: Predicate, retrieval: Retrieval[A])(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[A] =
+        Future.failed(new MissingBearerToken)
+    }
+  )
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -83,6 +93,38 @@ class NrsControllerSpec extends AnyWordSpec with Matchers with MockitoSugar with
       val jsonResponse = contentAsJson(result)
       (jsonResponse \ "statusCode").as[Int] shouldBe 400
       (jsonResponse \ "message").as[String] should include("Invalid request format")
+      verify(mockNrsService, never()).submitSingle(any())(any())
+    }
+
+    "pass the parsed request to the service" in {
+      when(mockNrsService.submitSingle(any())(any())).thenReturn(Future.successful(()))
+
+      val request = FakeRequest(Helpers.POST, "/nrs/single")
+        .withHeaders("Content-Type" -> "application/json")
+        .withBody(Json.toJson(testSingleRequest))
+
+      status(controller.submitSingle()(request)) shouldBe ACCEPTED
+
+      verify(mockNrsService).submitSingle(org.mockito.ArgumentMatchers.eq(testSingleRequest))(any())
+    }
+
+    "return 202 without waiting for the NRS call to finish" in {
+      when(mockNrsService.submitSingle(any())(any())).thenReturn(Future.never)
+
+      val request = FakeRequest(Helpers.POST, "/nrs/single")
+        .withHeaders("Content-Type" -> "application/json")
+        .withBody(Json.toJson(testSingleRequest))
+
+      status(controller.submitSingle()(request)) shouldBe ACCEPTED
+    }
+
+    "fail without calling the service when the caller is not authorised" in {
+      val result = unauthorisedController.submitSingle()(
+        FakeRequest(Helpers.POST, "/nrs/single").withBody(Json.toJson(testSingleRequest))
+      )
+
+      Await.result(result.failed, 5.seconds) shouldBe a[MissingBearerToken]
+      verify(mockNrsService, never()).submitSingle(any())(any())
     }
   }
 
@@ -114,6 +156,38 @@ class NrsControllerSpec extends AnyWordSpec with Matchers with MockitoSugar with
       val jsonResponse = contentAsJson(result)
       (jsonResponse \ "statusCode").as[Int] shouldBe 400
       (jsonResponse \ "message").as[String] should include("Invalid request format")
+      verify(mockNrsService, never()).submitBulk(any())(any())
+    }
+
+    "pass the parsed request to the service" in {
+      when(mockNrsService.submitBulk(any())(any())).thenReturn(Future.successful(()))
+
+      val request = FakeRequest(Helpers.POST, "/nrs/bulk")
+        .withHeaders("Content-Type" -> "application/json")
+        .withBody(Json.toJson(testBulkRequest))
+
+      status(controller.submitBulk()(request)) shouldBe ACCEPTED
+
+      verify(mockNrsService).submitBulk(org.mockito.ArgumentMatchers.eq(testBulkRequest))(any())
+    }
+
+    "return 202 without waiting for the NRS calls to finish" in {
+      when(mockNrsService.submitBulk(any())(any())).thenReturn(Future.never)
+
+      val request = FakeRequest(Helpers.POST, "/nrs/bulk")
+        .withHeaders("Content-Type" -> "application/json")
+        .withBody(Json.toJson(testBulkRequest))
+
+      status(controller.submitBulk()(request)) shouldBe ACCEPTED
+    }
+
+    "fail without calling the service when the caller is not authorised" in {
+      val result = unauthorisedController.submitBulk()(
+        FakeRequest(Helpers.POST, "/nrs/bulk").withBody(Json.toJson(testBulkRequest))
+      )
+
+      Await.result(result.failed, 5.seconds) shouldBe a[MissingBearerToken]
+      verify(mockNrsService, never()).submitBulk(any())(any())
     }
   }
 }

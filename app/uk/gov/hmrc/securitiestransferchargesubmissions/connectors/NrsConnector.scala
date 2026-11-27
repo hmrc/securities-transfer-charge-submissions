@@ -97,10 +97,6 @@ class NrsConnector @Inject()(
           // Let 5xx errors bubble up for retry
           logger.warn(s"NRS 5xx error on attempt $attemptNumber: ${e.statusCode} - ${e.message}")
           throw e
-        case e: UpstreamErrorResponse =>
-          // 4xx errors - don't retry
-          logger.error(s"NRS submission failed with 4xx error: ${e.statusCode} - ${e.message} (attempt $attemptNumber)")
-          None
         case e: Exception =>
           logger.error(s"NRS submission failed with exception (attempt $attemptNumber): ${e.getMessage}", e)
           throw e
@@ -150,9 +146,6 @@ class NrsConnector @Inject()(
         case e: UpstreamErrorResponse if e.statusCode >= 500 =>
           logger.warn(s"NRS attachment 5xx error on attempt $attemptNumber: ${e.statusCode} - ${e.message}")
           throw e
-        case e: UpstreamErrorResponse =>
-          logger.error(s"NRS attachment submission failed with 4xx error: ${e.statusCode} - ${e.message} (attempt $attemptNumber)")
-          None
         case e: Exception =>
           logger.error(s"NRS attachment submission failed with exception (attempt $attemptNumber): ${e.getMessage}", e)
           throw e

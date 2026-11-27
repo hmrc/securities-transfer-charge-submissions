@@ -16,15 +16,9 @@
 
 package uk.gov.hmrc.securitiestransferchargesubmissions.models.api
 
-import play.api.libs.json.{JsObject, JsValue, Json, OWrites}
-
-final case class ApiErrorResponse(error: String, details: Option[JsValue] = None)
+import play.api.libs.json.{JsObject, JsValue, Json}
 
 object ApiErrorResponse:
   def asJson(error: String, details: Option[JsValue] = None): JsObject =
     Json.obj("error" -> error) ++
       details.fold(Json.obj())(value => Json.obj("details" -> value))
-
-  given OWrites[ApiErrorResponse] = OWrites { response =>
-    asJson(response.error, response.details)
-  }

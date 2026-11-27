@@ -29,6 +29,7 @@ import uk.gov.hmrc.securitiestransferchargesubmissions.models.{BuyerTaxRate, TfB
 
 import java.time.{Clock, Instant, ZoneId, LocalDate}
 import scala.concurrent.Await
+import scala.jdk.CollectionConverters.*
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.DurationInt
 
@@ -246,9 +247,7 @@ class SubmissionClientSpec
           .withRequestBody(containing("\"isCorrectInfo\":\"T\""))
       )
 
-    "use exponential backoff between retries" in:
-      // Three 503s then a 201; we measure that 2 retries happen with the
-      // correct doubling pattern by checking all calls arrive and succeed.
+    "wait for an exponentially increasing delay before each retry" in:
       wireMockServer.stubFor(
         post(urlPathEqualTo(path))
           .inScenario("exponential-backoff")
@@ -271,12 +270,16 @@ class SubmissionClientSpec
       )
 
       val result = Await.result(
-        client(maxRetries = 2).submitTransfer(subscriptionId, correlationId, minimalRequest),
-        5.seconds
+        client(maxRetries = 2, initialBackoffMs = 300).submitTransfer(subscriptionId, correlationId, minimalRequest),
+        10.seconds
       )
 
       result shouldBe a[StcTransactionCreateProcessed]
-      wireMockServer.verify(3, postRequestedFor(urlPathEqualTo(path)))
+      val times = wireMockServer.findAll(postRequestedFor(urlPathEqualTo(path))).asScala.map(_.getLoggedDate.getTime).sorted
+      times.size shouldBe 3
+      // Delays are 300ms then 600ms; allow some scheduler slack on the lower bound only.
+      (times(1) - times(0)) should be >= 280L
+      (times(2) - times(1)) should be >= 580L
 
   "SubmissionClientImpl.viewTransaction" should:
 
